@@ -9,6 +9,14 @@ export default function Home() {
 
   useEffect(() => {
     const supabase = createClient()
+
+    // パスワードリセットのリンクでトップに来た場合にリダイレクト
+    supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        window.location.href = '/auth/reset'
+      }
+    })
+
     supabase
       .from('safe_salesperson_profiles')
       .select('*')
