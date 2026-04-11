@@ -31,9 +31,9 @@ export default function LoginPage() {
     } else {
       const { error } = await supabase.auth.signUp({ email, password })
       if (error) {
-        setError('登録に失敗しました。もう一度お試しください')
+        setError(error.message)
       } else {
-        setMessage('確認メールを送信しました。メールを確認してください。')
+        setMessage('登録完了です。ログインモードに切り替えてログインしてください。')
       }
     }
 
