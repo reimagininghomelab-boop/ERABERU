@@ -29,7 +29,7 @@ export default function Header({ backButton = false }: { backButton?: boolean })
       <div className="max-w-5xl mx-auto flex items-center justify-between">
         <div className="flex items-center gap-4">
           {backButton && (
-            <button onClick={() => router.back()} className="text-gray-400 hover:text-white transition text-sm">
+            <button onClick={() => router.push('/')} className="text-gray-400 hover:text-white transition text-sm">
               ← 戻る
             </button>
           )}
