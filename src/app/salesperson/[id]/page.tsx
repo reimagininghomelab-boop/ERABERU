@@ -12,6 +12,7 @@ export default function SalespersonDetail() {
   const [unlockedData, setUnlockedData] = useState<any>(null)
   const [user, setUser] = useState<User | null>(null)
   const [paying, setPaying] = useState(false)
+  const [reviews, setReviews] = useState<any[]>([])
 
   useEffect(() => {
     const supabase = createClient()
@@ -35,7 +36,15 @@ export default function SalespersonDetail() {
           .select('real_name, bio, experience_years, contract_count')
           .eq('id', id)
           .single()
-        if (full) setUnlockedData(full)
+        if (full) {
+          setUnlockedData(full)
+          const { data: reviewData } = await supabase
+            .from('contract_reviews')
+            .select('contract_price, content, created_at')
+            .eq('salesperson_id', id)
+            .order('created_at', { ascending: false })
+          if (reviewData) setReviews(reviewData)
+        }
       }
     }
 
@@ -127,6 +136,7 @@ export default function SalespersonDetail() {
 
         {/* 開示済み or ロック */}
         {unlockedData ? (
+          <>
           <div className="bg-stone-50 rounded-2xl shadow-sm border border-green-200 p-8">
             <div className="flex items-center gap-2 mb-5">
               <span className="text-green-600">🔓</span>
@@ -159,7 +169,32 @@ export default function SalespersonDetail() {
               </div>
             </div>
           </div>
+
+          <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
+            <p className="text-sm font-bold text-gray-700 mb-4">口コミ</p>
+            {reviews.length === 0 ? (
+              <p className="text-sm text-gray-400">まだ口コミがありません</p>
+            ) : (
+              <div className="space-y-4">
+                {reviews.map((r, i) => (
+                  <div key={i} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
+                    {r.contract_price && (
+                      <p className="text-xs text-gray-400 mb-1">
+                        成約価格: {(r.contract_price / 10000).toLocaleString()}万円
+                      </p>
+                    )}
+                    <p className="text-sm text-gray-700 leading-relaxed">{r.content}</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      {new Date(r.created_at).toLocaleDateString('ja-JP')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          </>
         ) : (
+          <>
           <div className="bg-stone-50 rounded-2xl shadow-sm border border-dashed border-gray-200 p-8 relative overflow-hidden">
             <div className="absolute inset-0 bg-stone-50/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center gap-2">
               <span className="text-3xl">🔒</span>
@@ -181,6 +216,18 @@ export default function SalespersonDetail() {
               </div>
             </div>
           </div>
+
+          <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-purple-500">✨</span>
+              <p className="text-sm font-bold text-purple-600">AIによる紹介文</p>
+              <span className="text-xs bg-purple-100 text-purple-400 px-2 py-0.5 rounded-full ml-auto">準備中</span>
+            </div>
+            <p className="text-sm text-gray-400 leading-relaxed">
+              口コミ・自己紹介・実績をもとにAIが生成した紹介文がここに表示されます。
+            </p>
+          </div>
+          </>
         )}
 
         {/* CTAエリア */}
