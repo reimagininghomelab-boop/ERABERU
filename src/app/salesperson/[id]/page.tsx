@@ -5,6 +5,9 @@ import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
 import type { User } from '@supabase/supabase-js'
 
+const MEETING_STATUSES = ['契約前', '契約後', '建築中', '引渡し済'] as const
+const SUPABASE_FUNCTIONS_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
+
 export default function SalespersonDetail() {
   const { id } = useParams()
   const router = useRouter()
@@ -12,7 +15,34 @@ export default function SalespersonDetail() {
   const [unlockedData, setUnlockedData] = useState<any>(null)
   const [user, setUser] = useState<User | null>(null)
   const [paying, setPaying] = useState(false)
+  const [payError, setPayError] = useState('')
   const [reviews, setReviews] = useState<any[]>([])
+  const [reviewStats, setReviewStats] = useState<{ total: number; approved: number; rate: number | null } | null>(null)
+  const [formRating, setFormRating] = useState(0)
+  const [formContent, setFormContent] = useState('')
+  const [formPrice, setFormPrice] = useState('')
+  const [formMeetingStatus, setFormMeetingStatus] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [submitDone, setSubmitDone] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+
+  const fetchReviews = async (supabase: ReturnType<typeof createClient>, currentUserId: string) => {
+    const { data } = await supabase
+      .from('contract_reviews')
+      .select('id, rating, contract_price, content, created_at, meeting_status, is_approved, user_id')
+      .eq('salesperson_id', id)
+      .order('created_at', { ascending: false })
+    if (data) {
+      setReviews(data)
+      const own = data.find((r: any) => r.user_id === currentUserId)
+      if (own) {
+        setFormRating(own.rating ?? 0)
+        setFormContent(own.content ?? '')
+        setFormPrice(own.contract_price ? String(own.contract_price / 10000) : '')
+        setFormMeetingStatus(own.meeting_status ?? '')
+      }
+    }
+  }
 
   useEffect(() => {
     const supabase = createClient()
@@ -21,7 +51,6 @@ export default function SalespersonDetail() {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)
 
-      // 公開情報を取得
       const { data: publicData } = await supabase
         .from('safe_salesperson_profiles')
         .select('*')
@@ -29,7 +58,9 @@ export default function SalespersonDetail() {
         .single()
       if (publicData) setAgent(publicData)
 
-      // ログイン済みなら開示済みデータも取得（RLSで許可された場合のみ返る）
+      const { data: stats } = await supabase.rpc('get_salesperson_review_stats', { p_salesperson_id: id })
+      if (stats) setReviewStats(stats)
+
       if (user) {
         const { data: full } = await supabase
           .from('salesperson_profiles')
@@ -38,12 +69,7 @@ export default function SalespersonDetail() {
           .single()
         if (full) {
           setUnlockedData(full)
-          const { data: reviewData } = await supabase
-            .from('contract_reviews')
-            .select('contract_price, content, created_at')
-            .eq('salesperson_id', id)
-            .order('created_at', { ascending: false })
-          if (reviewData) setReviews(reviewData)
+          await fetchReviews(supabase, user.id)
         }
       }
     }
@@ -54,25 +80,62 @@ export default function SalespersonDetail() {
   const handleOffer = async () => {
     if (!user) return
     setPaying(true)
-    const supabase = createClient()
-    const { data: { session } } = await supabase.auth.getSession()
-    const res = await fetch(
-      'https://jydawtmlshofviszztbu.supabase.co/functions/v1/create-checkout-session',
-      {
+    setPayError('')
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${SUPABASE_FUNCTIONS_URL}/create-checkout-session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({ salesperson_id: id, user_id: user.id }),
+      })
+      const { url, error } = await res.json()
+      if (url) {
+        window.location.href = url
+      } else {
+        console.error(error)
+        setPayError('決済ページへの遷移に失敗しました。もう一度お試しください。')
       }
-    )
-    const { url, error } = await res.json()
-    if (url) {
-      window.location.href = url
-    } else {
-      console.error(error)
+    } catch (e) {
+      console.error(e)
+      setPayError('通信エラーが発生しました。')
+    } finally {
       setPaying(false)
+    }
+  }
+
+  const handleReviewSubmit = async () => {
+    if (formRating === 0 || !formContent.trim() || !user) return
+    setSubmitting(true)
+    setSubmitError('')
+    setSubmitDone(false)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from('contract_reviews').upsert(
+        {
+          salesperson_id: id,
+          user_id: user.id,
+          rating: formRating,
+          content: formContent.trim(),
+          contract_price: formPrice ? parseInt(formPrice) * 10000 : null,
+          meeting_status: formMeetingStatus || null,
+          is_approved: false,
+        },
+        { onConflict: 'user_id,salesperson_id' }
+      )
+      if (error) throw error
+      await fetchReviews(supabase, user.id)
+      const { data: stats } = await supabase.rpc('get_salesperson_review_stats', { p_salesperson_id: id })
+      if (stats) setReviewStats(stats)
+      setSubmitDone(true)
+    } catch (e) {
+      console.error(e)
+      setSubmitError('投稿に失敗しました。もう一度お試しください。')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -81,6 +144,9 @@ export default function SalespersonDetail() {
       読み込み中...
     </div>
   )
+
+  const ownReview = reviews.find((r) => r.user_id === user?.id)
+  const otherApprovedReviews = reviews.filter((r) => r.user_id !== user?.id && r.is_approved)
 
   return (
     <main className="min-h-screen bg-stone-100">
@@ -131,6 +197,31 @@ export default function SalespersonDetail() {
                 }
               </div>
             </div>
+
+            {/* 口コミ公開率（開示前でも表示） */}
+            {reviewStats && (
+              <div className="pt-3 border-t border-stone-100">
+                <p className="text-xs text-gray-400 mb-1">口コミ公開率</p>
+                {reviewStats.total === 0 ? (
+                  <p className="text-sm text-gray-400">口コミなし</p>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 bg-stone-200 rounded-full h-2">
+                      <div
+                        className="bg-green-400 h-2 rounded-full transition-all"
+                        style={{ width: `${reviewStats.rate ?? 0}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-semibold text-gray-700">
+                      {reviewStats.rate ?? 0}%
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      （{reviewStats.approved}/{reviewStats.total}件承認）
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -170,14 +261,56 @@ export default function SalespersonDetail() {
             </div>
           </div>
 
+          {/* 口コミ一覧 */}
           <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
             <p className="text-sm font-bold text-gray-700 mb-4">口コミ</p>
-            {reviews.length === 0 ? (
+
+            {/* 自分の口コミ（承認状況付き） */}
+            {ownReview && (
+              <div className="mb-4 p-4 rounded-xl border border-dashed border-orange-200 bg-orange-50">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-orange-600">あなたの口コミ</p>
+                  {ownReview.is_approved
+                    ? <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">公開中</span>
+                    : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">確認中</span>
+                  }
+                </div>
+                {ownReview.rating && (
+                  <p className="text-sm text-amber-400 mb-1">
+                    {'★'.repeat(ownReview.rating)}{'☆'.repeat(5 - ownReview.rating)}
+                  </p>
+                )}
+                {ownReview.meeting_status && (
+                  <p className="text-xs text-gray-400 mb-1">📋 {ownReview.meeting_status}</p>
+                )}
+                {ownReview.contract_price && (
+                  <p className="text-xs text-gray-400 mb-1">
+                    成約価格: {(ownReview.contract_price / 10000).toLocaleString()}万円
+                  </p>
+                )}
+                <p className="text-sm text-gray-700 leading-relaxed">{ownReview.content}</p>
+                <p className="text-xs text-gray-400 mt-2">
+                  {new Date(ownReview.created_at).toLocaleDateString('ja-JP')}
+                </p>
+              </div>
+            )}
+
+            {/* 他ユーザーの承認済み口コミ */}
+            {otherApprovedReviews.length === 0 && !ownReview && (
               <p className="text-sm text-gray-400">まだ口コミがありません</p>
-            ) : (
+            )}
+            {otherApprovedReviews.length > 0 && (
               <div className="space-y-4">
-                {reviews.map((r, i) => (
+                {otherApprovedReviews.map((r, i) => (
                   <div key={i} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
+                    {r.rating && (
+                      <p className="text-sm text-amber-400 mb-1">
+                        {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                      </p>
+                    )}
+                    {r.meeting_status && (
+                      <p className="text-xs text-gray-400 mb-1">📋 {r.meeting_status}</p>
+                    )}
                     {r.contract_price && (
                       <p className="text-xs text-gray-400 mb-1">
                         成約価格: {(r.contract_price / 10000).toLocaleString()}万円
@@ -191,6 +324,86 @@ export default function SalespersonDetail() {
                 ))}
               </div>
             )}
+
+            {/* 投稿フォーム */}
+            <div className="mt-6 pt-6 border-t border-stone-200">
+              <p className="text-sm font-bold text-gray-700 mb-1">
+                {ownReview ? '口コミを更新する' : '口コミを投稿する'}
+              </p>
+              {ownReview && (
+                <p className="text-xs text-gray-400 mb-3">更新すると再度確認が必要になります</p>
+              )}
+              {submitDone && (
+                <p className="text-sm text-green-600 mb-3">投稿しました。確認後に公開されます。</p>
+              )}
+              {submitError && (
+                <p className="text-sm text-red-500 mb-3">{submitError}</p>
+              )}
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs text-gray-400 mb-2">評価 <span className="text-red-400">*</span></p>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        onClick={() => setFormRating(star)}
+                        className={`text-2xl transition ${star <= formRating ? 'text-amber-400' : 'text-gray-300'}`}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-2">打ち合わせ状況（任意）</p>
+                  <div className="flex flex-wrap gap-2">
+                    {MEETING_STATUSES.map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setFormMeetingStatus(formMeetingStatus === s ? '' : s)}
+                        className={`text-xs px-3 py-1.5 rounded-full border transition ${
+                          formMeetingStatus === s
+                            ? 'bg-orange-500 text-white border-orange-500'
+                            : 'bg-white text-gray-500 border-stone-200 hover:border-orange-300'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-2">コメント <span className="text-red-400">*</span></p>
+                  <textarea
+                    value={formContent}
+                    onChange={(e) => setFormContent(e.target.value)}
+                    placeholder="この営業マンの対応はいかがでしたか？"
+                    rows={4}
+                    className="w-full text-sm border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400 mb-2">成約価格（任意）</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={formPrice}
+                      onChange={(e) => setFormPrice(e.target.value)}
+                      placeholder="例: 3500"
+                      className="w-40 text-sm border border-stone-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    />
+                    <span className="text-sm text-gray-500">万円</span>
+                  </div>
+                </div>
+                <button
+                  onClick={handleReviewSubmit}
+                  disabled={formRating === 0 || !formContent.trim() || submitting}
+                  className="w-full bg-orange-500 hover:bg-orange-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl transition text-sm"
+                >
+                  {submitting ? '送信中...' : ownReview ? '口コミを更新する' : '口コミを投稿する'}
+                </button>
+              </div>
+            </div>
           </div>
           </>
         ) : (
@@ -235,6 +448,7 @@ export default function SalespersonDetail() {
           <div className="bg-gray-900 rounded-2xl p-6">
             <p className="text-white font-bold text-base mb-1">この営業マンにオファーする</p>
             <p className="text-gray-400 text-xs mb-4">受諾後に実名・連絡先・詳細プロフィールが開示されます</p>
+            {payError && <p className="text-red-400 text-xs mb-3">{payError}</p>}
             {user ? (
               <button
                 onClick={handleOffer}

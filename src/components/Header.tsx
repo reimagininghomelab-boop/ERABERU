@@ -42,6 +42,11 @@ export default function Header({ backButton = false }: { backButton?: boolean })
         <div className="flex items-center gap-3">
           {user ? (
             <>
+              {['reimagining.home.lab@gmail.com', '1989yo55@gmail.com'].includes(user.email ?? '') && (
+                <Link href="/admin" className="text-xs text-orange-400 hover:text-orange-300 transition font-medium">
+                  管理
+                </Link>
+              )}
               <span className="text-xs text-gray-400 hidden sm:block">{user.email}</span>
               <button
                 onClick={handleSignOut}
