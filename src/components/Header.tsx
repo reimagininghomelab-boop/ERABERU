@@ -40,6 +40,18 @@ export default function Header({ backButton = false }: { backButton?: boolean })
         </div>
 
         <div className="flex items-center gap-3">
+          <Link
+            href="/salesperson/map"
+            className="text-xs text-gray-400 hover:text-white transition hidden sm:block"
+          >
+            スタイルマップ
+          </Link>
+          <Link
+            href="/salesperson/register"
+            className="text-xs text-gray-400 hover:text-white transition hidden sm:block"
+          >
+            営業マンとして登録
+          </Link>
           {user ? (
             <>
               {['reimagining.home.lab@gmail.com', '1989yo55@gmail.com'].includes(user.email ?? '') && (

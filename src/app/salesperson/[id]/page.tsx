@@ -6,6 +6,11 @@ import Header from '@/components/Header'
 import type { User } from '@supabase/supabase-js'
 
 const MEETING_STATUSES = ['契約前', '契約後', '建築中', '引渡し済'] as const
+
+const SALES_STYLE_AXES = [
+  { key: 'listening_proposing', left: '傾聴型', right: '提案型' },
+  { key: 'numbers_feeling', left: '数字で説明', right: '感覚で説明' },
+]
 const SUPABASE_FUNCTIONS_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
 
 export default function SalespersonDetail() {
@@ -25,6 +30,8 @@ export default function SalespersonDetail() {
   const [submitting, setSubmitting] = useState(false)
   const [submitDone, setSubmitDone] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const [isFavorited, setIsFavorited] = useState(false)
+  const [favoriteLoading, setFavoriteLoading] = useState(false)
 
   const fetchReviews = async (supabase: ReturnType<typeof createClient>, currentUserId: string) => {
     const { data } = await supabase
@@ -51,6 +58,18 @@ export default function SalespersonDetail() {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)
 
+      if (user) {
+        const { data: ownProfile } = await supabase
+          .from('salesperson_profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle()
+        if (ownProfile) {
+          router.replace('/salesperson/dashboard')
+          return
+        }
+      }
+
       const { data: publicData } = await supabase
         .from('safe_salesperson_profiles')
         .select('*')
@@ -64,18 +83,40 @@ export default function SalespersonDetail() {
       if (user) {
         const { data: full } = await supabase
           .from('salesperson_profiles')
-          .select('real_name, bio, experience_years, contract_count')
+          .select('real_name, family_name, given_name, bio, contract_count')
           .eq('id', id)
           .single()
         if (full) {
           setUnlockedData(full)
           await fetchReviews(supabase, user.id)
         }
+
+        const { data: fav } = await supabase
+          .from('favorites')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('salesperson_id', id)
+          .maybeSingle()
+        setIsFavorited(!!fav)
       }
     }
 
     load()
   }, [id])
+
+  const handleFavoriteToggle = async () => {
+    if (!user || favoriteLoading) return
+    setFavoriteLoading(true)
+    const supabase = createClient()
+    if (isFavorited) {
+      await supabase.from('favorites').delete().eq('user_id', user.id).eq('salesperson_id', id)
+      setIsFavorited(false)
+    } else {
+      await supabase.from('favorites').insert({ user_id: user.id, salesperson_id: id })
+      setIsFavorited(true)
+    }
+    setFavoriteLoading(false)
+  }
 
   const handleOffer = async () => {
     if (!user) return
@@ -160,43 +201,101 @@ export default function SalespersonDetail() {
             <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center text-4xl">
               👤
             </div>
-            {agent.is_verified
-              ? <span className="text-sm bg-green-100 text-green-700 font-medium px-3 py-1 rounded-full">✓ 認証済み</span>
-              : <span className="text-sm bg-gray-100 text-gray-400 px-3 py-1 rounded-full">未認証</span>
-            }
+            <div className="flex flex-col items-end gap-2">
+              {agent.is_verified && (
+                <span className="text-sm bg-blue-100 text-blue-600 font-medium px-3 py-1 rounded-full">✓ 本人確認済み</span>
+              )}
+              {user && (
+                <button
+                  onClick={handleFavoriteToggle}
+                  disabled={favoriteLoading}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                    isFavorited
+                      ? 'bg-rose-50 text-rose-500 border-rose-200 hover:bg-rose-100'
+                      : 'bg-stone-50 text-stone-400 border-stone-200 hover:border-rose-200 hover:text-rose-400'
+                  }`}
+                >
+                  <span>{isFavorited ? '♥' : '♡'}</span>
+                  <span>{isFavorited ? 'お気に入り済み' : 'お気に入り'}</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="space-y-5">
             <div>
               <p className="text-xs text-gray-400 mb-1">会社名</p>
               <p className="text-gray-800 font-semibold">{agent.company_name}</p>
+              {agent.department && (
+                <p className="text-xs text-gray-500 mt-0.5">{agent.department}</p>
+              )}
             </div>
-            <div>
-              <p className="text-xs text-gray-400 mb-1">エリア</p>
-              <p className="text-gray-800 font-semibold">📍 {agent.area_prefecture ?? '未設定'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 mb-2">得意分野</p>
-              <div className="flex flex-wrap gap-2">
-                {(agent.specialty_styles ?? []).length > 0
-                  ? agent.specialty_styles.map((s: string) => (
-                      <span key={s} className="text-sm bg-orange-50 text-orange-500 px-3 py-1 rounded-full border border-orange-100">{s}</span>
-                    ))
-                  : <p className="text-gray-400 text-sm">未設定</p>
-                }
+            {(agent.core_city || (agent.available_prefectures ?? []).length > 0) && (
+              <div>
+                <p className="text-xs text-gray-400 mb-1">活動エリア</p>
+                {agent.core_city && (
+                  <p className="text-gray-800 text-sm mb-1">📍 コアエリア: {agent.core_city}</p>
+                )}
+                {(agent.available_prefectures ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {agent.available_prefectures.map((p: string) => (
+                      <span key={p} className="text-xs bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full">{p}</span>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 mb-2">所持資格</p>
-              <div className="flex flex-wrap gap-2">
-                {(agent.qualifications ?? []).length > 0
-                  ? agent.qualifications.map((q: string) => (
-                      <span key={q} className="text-sm bg-blue-50 text-blue-500 px-3 py-1 rounded-full border border-blue-100">{q}</span>
-                    ))
-                  : <p className="text-gray-400 text-sm">未設定</p>
-                }
+            )}
+            {(agent.specialty_styles ?? []).length > 0 && (
+              <div>
+                <p className="text-xs text-gray-400 mb-2">得意分野</p>
+                <div className="flex flex-wrap gap-2">
+                  {agent.specialty_styles.map((s: string) => (
+                    <span key={s} className="text-sm bg-orange-50 text-orange-500 px-3 py-1 rounded-full border border-orange-100">{s}</span>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
+            {(agent.qualifications ?? []).length > 0 && (
+              <div>
+                <p className="text-xs text-gray-400 mb-2">所持資格</p>
+                <div className="flex flex-wrap gap-2">
+                  {agent.qualifications.map((q: string) => (
+                    <span key={q} className="text-sm bg-blue-50 text-blue-500 px-3 py-1 rounded-full border border-blue-100">{q}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(() => {
+              const styles: Record<string, number> = agent.sales_styles ?? {}
+              const hasStyles = SALES_STYLE_AXES.some(({ key }) => styles[key] !== undefined)
+              if (!hasStyles) return null
+              return (
+                <div>
+                  <p className="text-xs text-gray-400 mb-3">会話スタイル</p>
+                  <div className="space-y-3">
+                    {SALES_STYLE_AXES.map(({ key, left, right }) => {
+                      const val = styles[key] ?? 3
+                      const pct = ((val - 1) / 4) * 100
+                      return (
+                        <div key={key}>
+                          <div className="flex justify-between text-xs text-stone-400 mb-2">
+                            <span>{left}</span>
+                            <span>{right}</span>
+                          </div>
+                          <div className="relative h-5 flex items-center">
+                            <div className="absolute inset-x-0 h-1.5 rounded-full bg-stone-200" />
+                            <div
+                              className="absolute text-orange-400 leading-none -translate-x-1/2 text-base"
+                              style={{ left: `${pct}%` }}
+                            >★</div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* 口コミ公開率（開示前でも表示） */}
             {reviewStats && (
@@ -236,7 +335,11 @@ export default function SalespersonDetail() {
             <div className="space-y-5">
               <div>
                 <p className="text-xs text-gray-400 mb-1">実名</p>
-                <p className="text-gray-800 font-semibold">{unlockedData.real_name}</p>
+                <p className="text-gray-800 font-semibold">
+                  {unlockedData.family_name && unlockedData.given_name
+                    ? `${unlockedData.family_name} ${unlockedData.given_name}`
+                    : unlockedData.real_name}
+                </p>
               </div>
               {unlockedData.bio && (
                 <div>
@@ -245,12 +348,6 @@ export default function SalespersonDetail() {
                 </div>
               )}
               <div className="flex gap-6">
-                {unlockedData.experience_years && (
-                  <div>
-                    <p className="text-xs text-gray-400 mb-1">経験年数</p>
-                    <p className="text-gray-800 font-semibold">{unlockedData.experience_years}年</p>
-                  </div>
-                )}
                 {unlockedData.contract_count !== null && (
                   <div>
                     <p className="text-xs text-gray-400 mb-1">累計成約数</p>

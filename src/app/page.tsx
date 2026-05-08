@@ -1,10 +1,13 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
 
 export default function Home() {
+  const router = useRouter()
+  const [checking, setChecking] = useState(true)
   const [agents, setAgents] = useState<any[]>([])
   const [unlockedMap, setUnlockedMap] = useState<Record<string, any>>({})
   const [keyword, setKeyword] = useState('')
@@ -13,19 +16,34 @@ export default function Home() {
   const [filterQualification, setFilterQualification] = useState('')
 
   useEffect(() => {
-    // パスワードリセットリンクでトップに来た場合、ハッシュごとリセットページへ転送
     if (window.location.hash.includes('type=recovery')) {
       window.location.href = '/auth/reset' + window.location.hash
+      return
+    }
+    if (window.location.hash.includes('type=signup')) {
+      window.location.href = '/salesperson/register' + window.location.hash
       return
     }
 
     const supabase = createClient()
 
     const load = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: ownProfile } = await supabase
+          .from('salesperson_profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .maybeSingle()
+        if (ownProfile) {
+          router.replace('/salesperson/dashboard')
+          return
+        }
+      }
+
       const { data: publicData } = await supabase.from('safe_salesperson_profiles').select('*')
       if (publicData) setAgents(publicData)
 
-      const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         const { data: unlocked } = await supabase
           .from('salesperson_profiles')
@@ -36,6 +54,8 @@ export default function Home() {
           setUnlockedMap(map)
         }
       }
+
+      setChecking(false)
     }
 
     load()
@@ -67,6 +87,10 @@ export default function Home() {
       return true
     })
   }, [agents, unlockedMap, keyword, filterPrefecture, filterSpecialty, filterQualification])
+
+  if (checking) return (
+    <div className="min-h-screen bg-stone-100" />
+  )
 
   return (
     <main className="min-h-screen bg-stone-100">
@@ -151,10 +175,9 @@ export default function Home() {
                   {unlockedMap[agent.id] && (
                     <span className="text-xs bg-green-100 text-green-700 font-medium px-2 py-1 rounded-full">🔓 開示済み</span>
                   )}
-                  {agent.is_verified
-                    ? <span className="text-xs bg-green-100 text-green-700 font-medium px-2 py-1 rounded-full">✓ 認証済み</span>
-                    : <span className="text-xs bg-gray-100 text-gray-400 px-2 py-1 rounded-full">未認証</span>
-                  }
+                  {agent.is_verified && (
+                    <span className="text-xs bg-blue-100 text-blue-600 font-medium px-2 py-1 rounded-full">✓ 本人確認済み</span>
+                  )}
                 </div>
               </div>
 
