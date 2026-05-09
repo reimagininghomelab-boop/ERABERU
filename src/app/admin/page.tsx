@@ -37,7 +37,6 @@ export default function AdminPage() {
         supabase
           .from('salesperson_profiles')
           .select('id, real_name, company_name, area_prefecture, experience_years, bio, status, created_at')
-          .not('user_id', 'is', null)
           .order('created_at', { ascending: false }),
       ])
 
