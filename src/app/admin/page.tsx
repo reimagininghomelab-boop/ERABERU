@@ -93,30 +93,17 @@ export default function AdminPage() {
     setProcessingAppId(null)
   }
 
-  const handleRejectApplication = async (appId: string) => {
-    if (!confirm('この申請を審査否認しますか？')) return
-    setProcessingAppId(appId)
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('salesperson_profiles')
-      .update({ status: 'rejected' })
-      .eq('id', appId)
-    if (!error) {
-      setApplications((prev) => prev.map((a) => a.id === appId ? { ...a, status: 'rejected' } : a))
-    }
-    setProcessingAppId(null)
-  }
 
-  const handleSuspend = async (appId: string) => {
-    if (!confirm('この営業マンを一時停止しますか？')) return
+  const handleMakePrivate = async (appId: string) => {
+    if (!confirm('この営業マンを非公開にしますか？')) return
     setProcessingAppId(appId)
     const supabase = createClient()
     const { error } = await supabase
       .from('salesperson_profiles')
-      .update({ status: 'suspended' })
+      .update({ status: 'pending' })
       .eq('id', appId)
     if (!error) {
-      setApplications((prev) => prev.map((a) => a.id === appId ? { ...a, status: 'suspended' } : a))
+      setApplications((prev) => prev.map((a) => a.id === appId ? { ...a, status: 'pending' } : a))
     }
     setProcessingAppId(null)
   }
@@ -253,12 +240,12 @@ export default function AdminPage() {
 
         {/* 営業マン管理 */}
         {tab === 'salesperson' && (() => {
-          const pendingApps = applications.filter((a) => a.status === 'pending')
+          const privateApps = applications.filter((a) => a.status === 'pending')
           const activeApps = applications.filter((a) => a.status === 'active')
           const otherApps = applications.filter((a) => ['rejected', 'suspended', 'banned', 'retired'].includes(a.status))
 
           const statusLabel: Record<string, string> = {
-            pending: '審査中',
+            pending: '非公開',
             active: '公開中',
             suspended: '一時停止',
             rejected: '審査否認',
@@ -266,7 +253,7 @@ export default function AdminPage() {
             retired: '退会',
           }
           const statusColor: Record<string, string> = {
-            pending: 'bg-amber-100 text-amber-600',
+            pending: 'bg-gray-100 text-gray-500',
             active: 'bg-green-100 text-green-600',
             suspended: 'bg-gray-100 text-gray-500',
             rejected: 'bg-red-100 text-red-500',
@@ -296,34 +283,16 @@ export default function AdminPage() {
               </div>
 
               <div className="flex gap-2">
-                {a.status === 'pending' && (
-                  <>
-                    <button
-                      onClick={() => handleApproveApplication(a.id)}
-                      disabled={processingAppId === a.id}
-                      className="flex-1 bg-blue-500 hover:bg-blue-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-2.5 rounded-xl transition text-sm"
-                    >
-                      {processingAppId === a.id ? '処理中...' : '承認して公開'}
-                    </button>
-                    <button
-                      onClick={() => handleRejectApplication(a.id)}
-                      disabled={processingAppId === a.id}
-                      className="flex-1 bg-stone-200 hover:bg-red-100 hover:text-red-500 disabled:opacity-50 text-gray-500 font-bold py-2.5 rounded-xl transition text-sm"
-                    >
-                      {processingAppId === a.id ? '処理中...' : '審査否認'}
-                    </button>
-                  </>
-                )}
                 {a.status === 'active' && (
                   <button
-                    onClick={() => handleSuspend(a.id)}
+                    onClick={() => handleMakePrivate(a.id)}
                     disabled={processingAppId === a.id}
-                    className="flex-1 bg-stone-200 hover:bg-amber-100 hover:text-amber-600 disabled:opacity-50 text-gray-500 font-bold py-2.5 rounded-xl transition text-sm"
+                    className="flex-1 bg-stone-200 hover:bg-gray-300 disabled:opacity-50 text-gray-500 font-bold py-2.5 rounded-xl transition text-sm"
                   >
-                    {processingAppId === a.id ? '処理中...' : '一時停止'}
+                    {processingAppId === a.id ? '処理中...' : '非公開にする'}
                   </button>
                 )}
-                {(a.status === 'suspended' || a.status === 'rejected') && (
+                {a.status === 'pending' && (
                   <button
                     onClick={() => handleApproveApplication(a.id)}
                     disabled={processingAppId === a.id}
@@ -338,16 +307,16 @@ export default function AdminPage() {
 
           return (
             <div className="space-y-6">
-              {pendingApps.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-amber-600 mb-3">審査待ち（{pendingApps.length}件）</p>
-                  <div className="space-y-4">{pendingApps.map(renderCard)}</div>
-                </div>
-              )}
               {activeApps.length > 0 && (
                 <div>
                   <p className="text-xs font-bold text-green-600 mb-3">公開中（{activeApps.length}件）</p>
                   <div className="space-y-4">{activeApps.map(renderCard)}</div>
+                </div>
+              )}
+              {privateApps.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-500 mb-3">非公開（{privateApps.length}件）</p>
+                  <div className="space-y-4">{privateApps.map(renderCard)}</div>
                 </div>
               )}
               {otherApps.length > 0 && (
