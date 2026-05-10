@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
@@ -26,18 +26,25 @@ const SALES_STYLE_AXES = [
   { key: 'numbers_feeling', left: '数字で説明', right: '感覚で説明' },
 ]
 
+const OTHER_COMPANY_ID = '__other__'
+
 type Company = { id: string; name: string; domains: string[] }
+
+type UserMetadata = {
+  selected_company_id?: string
+  application_company_name?: string
+}
 
 export default function SalespersonRegisterPage() {
   const router = useRouter()
   const [companies, setCompanies] = useState<Company[]>([])
   const [step, setStep] = useState<1 | 2 | 'email_sent'>(1)
   const [initializing, setInitializing] = useState(true)
-  const [pendingProfileId, setPendingProfileId] = useState<string | null>(null)
+  const [registrationResult, setRegistrationResult] = useState<'active' | 'pending' | null>(null)
 
   // Step 1
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null)
+  const [companyNameInput, setCompanyNameInput] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [step1Loading, setStep1Loading] = useState(false)
@@ -59,60 +66,88 @@ export default function SalespersonRegisterPage() {
   const [step2Error, setStep2Error] = useState('')
   const [done, setDone] = useState(false)
 
+  const checkSession = useCallback(async (userId: string, userMetadata?: UserMetadata) => {
+    const supabase = createClient()
+
+    const { data: profile } = await supabase
+      .from('salesperson_profiles')
+      .select('id, status, company_id, application_company_name, family_name, given_name, department, core_city, available_prefectures, qualifications, sales_styles, bio')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (profile?.status === 'active') {
+      router.replace('/salesperson/dashboard')
+      return
+    }
+
+    // pending中は既存データをフォームに復元（プロフィール再編集可）
+    let restoredCompanyFromDb = false
+    if (profile) {
+      if (profile.family_name) setFamilyName(profile.family_name as string)
+      if (profile.given_name) setGivenName(profile.given_name as string)
+      if (profile.department) setDepartment(profile.department as string)
+      if (profile.core_city) setCoreCity(profile.core_city as string)
+      if (profile.available_prefectures) setAvailablePrefectures(profile.available_prefectures as string[])
+      if (profile.qualifications) setQualifications(profile.qualifications as string[])
+      if (profile.sales_styles) setSalesStyles(profile.sales_styles as Record<string, number>)
+      if (profile.bio) setBio(profile.bio as string)
+
+      // 会社情報の復元: DB最優先
+      if (profile.company_id) {
+        setSelectedCompanyId(profile.company_id as string)
+        restoredCompanyFromDb = true
+      } else if (profile.application_company_name) {
+        setSelectedCompanyId(OTHER_COMPANY_ID)
+        setCompanyNameInput(profile.application_company_name as string)
+        restoredCompanyFromDb = true
+      }
+    }
+
+    // DBに会社情報がない場合は user_metadata → localStorage の順でフォールバック
+    // TODO: メールリンクを別端末で開くと localStorage からは復元できない。
+    // 将来的には pending レコードの company_id / application_company_name から一本化する。
+    if (!restoredCompanyFromDb) {
+      const companyId =
+        userMetadata?.selected_company_id ??
+        localStorage.getItem('pending_company_id') ??
+        ''
+      const companyName =
+        userMetadata?.application_company_name ??
+        localStorage.getItem('pending_company_name') ??
+        ''
+      if (companyId) setSelectedCompanyId(companyId)
+      if (companyName) setCompanyNameInput(companyName)
+    }
+
+    localStorage.removeItem('pending_company_id')
+    localStorage.removeItem('pending_company_name')
+
+    setStep(2)
+    setInitializing(false)
+  }, [router])
+
   useEffect(() => {
     const supabase = createClient()
 
-    const loadCompanies = async () => {
-      const { data } = await supabase.from('companies').select('id, name, domains').order('name')
-      if (data) setCompanies(data)
-    }
+    supabase.from('companies').select('id, name, domains').order('name').then(({ data }) => {
+      if (data) setCompanies(data as Company[])
+    })
 
-    const checkSession = async (userId: string) => {
-      const { data: profile } = await supabase
-        .from('salesperson_profiles')
-        .select('id, status, company_id, companies(id, name, domains)')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (profile?.status === 'active') {
-        router.replace('/salesperson/dashboard')
-        return
-      }
-
-      if (profile?.status === 'pending_email') {
-        setPendingProfileId(profile.id)
-        const company = profile.companies as any
-        if (company) { setSelectedCompany(company); setSelectedCompanyId(company.id) }
-      } else {
-        const pendingCompanyId = localStorage.getItem('pending_company_id')
-        if (pendingCompanyId) setSelectedCompanyId(pendingCompanyId)
-        localStorage.removeItem('pending_company_id')
-      }
-
-      setStep(2)
-      setInitializing(false)
-    }
-
-    loadCompanies()
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        await checkSession(session.user.id)
+        const metadata = session.user.user_metadata as UserMetadata | undefined
+        checkSession(session.user.id, metadata)
       } else {
         setInitializing(false)
       }
     })
 
     return () => subscription.unsubscribe()
-  }, [])
+  }, [checkSession])
 
-  // companies ロード後に selectedCompanyId から selectedCompany を復元
-  useEffect(() => {
-    if (companies.length > 0 && selectedCompanyId && !selectedCompany) {
-      const c = companies.find((c) => c.id === selectedCompanyId)
-      if (c) setSelectedCompany(c)
-    }
-  }, [companies, selectedCompanyId])
+  // selectedCompany は導出値として計算（useState不要）
+  const selectedCompany = companies.find((c) => c.id === selectedCompanyId) ?? null
+  const isOtherCompany = selectedCompanyId === OTHER_COMPANY_ID
 
   const togglePrefecture = (pref: string) => {
     setAvailablePrefectures(
@@ -133,15 +168,9 @@ export default function SalespersonRegisterPage() {
   const handleAccountSubmit = async () => {
     setStep1Error('')
     if (!selectedCompanyId) { setStep1Error('会社を選択してください'); return }
+    if (isOtherCompany && !companyNameInput.trim()) { setStep1Error('会社名を入力してください'); return }
     if (!email || !password) { setStep1Error('メールアドレスとパスワードを入力してください'); return }
     if (password.length < 6) { setStep1Error('パスワードは6文字以上で入力してください'); return }
-
-    const company = companies.find((c) => c.id === selectedCompanyId)
-    const domain = email.split('@')[1]?.toLowerCase()
-    if (!company || !domain || !company.domains.includes(domain)) {
-      setStep1Error(`選択した会社のメールアドレスを使用してください（例: yourname@${company?.domains[0] ?? 'company.co.jp'}）`)
-      return
-    }
 
     setStep1Loading(true)
     const supabase = createClient()
@@ -151,6 +180,10 @@ export default function SalespersonRegisterPage() {
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/salesperson/register`,
+        data: {
+          selected_company_id: selectedCompanyId,
+          application_company_name: isOtherCompany ? companyNameInput.trim() : '',
+        },
       },
     })
 
@@ -164,7 +197,9 @@ export default function SalespersonRegisterPage() {
       return
     }
 
+    // 同端末・同ブラウザ用のフォールバック
     localStorage.setItem('pending_company_id', selectedCompanyId)
+    if (isOtherCompany) localStorage.setItem('pending_company_name', companyNameInput.trim())
 
     setStep1Loading(false)
     setStep('email_sent')
@@ -173,58 +208,42 @@ export default function SalespersonRegisterPage() {
   const handleProfileSubmit = async () => {
     setStep2Error('')
     if (!familyName || !givenName) { setStep2Error('姓と名を入力してください'); return }
+    if (!selectedCompanyId) { setStep2Error('会社情報が取得できませんでした。ページを再読み込みしてください。'); return }
 
     setStep2Loading(true)
-    const supabase = createClient()
 
-    const { data: { user }, error: getUserError } = await supabase.auth.getUser()
-    if (getUserError || !user) {
-      setStep2Error('セッションが失われました。メールのリンクから再度アクセスしてください。')
-      setStep2Loading(false)
-      return
+    try {
+      const res = await fetch('/api/salesperson/register-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          family_name: familyName,
+          given_name: givenName,
+          company_id: selectedCompanyId,
+          application_company_name: isOtherCompany ? companyNameInput : null,
+          department: department || null,
+          core_city: coreCity || null,
+          available_prefectures: availablePrefectures,
+          qualifications,
+          sales_styles: salesStyles,
+          bio: bio || null,
+        }),
+      })
+
+      const data = await res.json() as { registrationResult?: 'active' | 'pending'; error?: string }
+
+      if (!res.ok) {
+        setStep2Error(data.error ?? '登録に失敗しました')
+        setStep2Loading(false)
+        return
+      }
+
+      setRegistrationResult(data.registrationResult ?? 'pending')
+      setDone(true)
+    } catch {
+      setStep2Error('通信に失敗しました。時間をおいて再度お試しください。')
     }
 
-    if (!selectedCompanyId) {
-      setStep2Error('会社情報が取得できませんでした。ページを再読み込みしてください。')
-      setStep2Loading(false)
-      return
-    }
-
-    const profileData = {
-      family_name: familyName,
-      given_name: givenName,
-      real_name: `${familyName} ${givenName}`,
-      company_id: selectedCompanyId,
-      department: department || null,
-      core_city: coreCity || null,
-      available_prefectures: availablePrefectures,
-      qualifications: qualifications,
-      sales_styles: salesStyles,
-      bio: bio || null,
-      status: 'active',
-    }
-
-    let saveError = null
-    if (pendingProfileId) {
-      const { error } = await supabase
-        .from('salesperson_profiles')
-        .update(profileData)
-        .eq('id', pendingProfileId)
-      saveError = error
-    } else {
-      const { error } = await supabase
-        .from('salesperson_profiles')
-        .insert({ user_id: user.id, ...profileData })
-      saveError = error
-    }
-
-    if (saveError) {
-      setStep2Error('登録に失敗しました: ' + saveError.message)
-      setStep2Loading(false)
-      return
-    }
-
-    setDone(true)
     setStep2Loading(false)
   }
 
@@ -236,15 +255,31 @@ export default function SalespersonRegisterPage() {
         <Header />
         <div className="max-w-xl mx-auto px-6 py-16 text-center">
           <div className="bg-white rounded-2xl shadow-sm p-10">
-            <div className="text-4xl mb-4">✅</div>
-            <h2 className="text-xl font-bold text-stone-800 mb-3">登録が完了しました</h2>
-            <p className="text-stone-500 text-sm leading-relaxed mb-6">
-              プロフィールが公開されました。<br />
-              ダッシュボードから掲載状況や口コミを確認できます。
-            </p>
-            <Link href="/salesperson/dashboard" className="inline-block bg-orange-500 hover:bg-orange-600 text-white font-bold px-6 py-3 rounded-xl transition text-sm">
-              ダッシュボードへ
-            </Link>
+            {registrationResult === 'active' ? (
+              <>
+                <div className="text-4xl mb-4">✅</div>
+                <h2 className="text-xl font-bold text-stone-800 mb-3">登録が完了しました</h2>
+                <p className="text-stone-500 text-sm leading-relaxed mb-6">
+                  会社メールアドレスの確認が取れたため、営業プロフィールを公開しました。<br />
+                  ダッシュボードから掲載状況や口コミを確認できます。
+                </p>
+                <Link href="/salesperson/dashboard" className="inline-block bg-orange-500 hover:bg-orange-600 text-white font-bold px-6 py-3 rounded-xl transition text-sm">
+                  ダッシュボードへ
+                </Link>
+              </>
+            ) : (
+              <>
+                <div className="text-4xl mb-4">📋</div>
+                <h2 className="text-xl font-bold text-stone-800 mb-3">申請を受け付けました</h2>
+                <p className="text-stone-500 text-sm leading-relaxed mb-6">
+                  所属会社またはメールアドレスの確認が取れるまで、プロフィールは非公開となります。<br />
+                  確認が完了次第、公開のご連絡をいたします。
+                </p>
+                <Link href="/" className="inline-block bg-stone-400 hover:bg-stone-500 text-white font-bold px-6 py-3 rounded-xl transition text-sm">
+                  トップページへ
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </main>
@@ -257,7 +292,7 @@ export default function SalespersonRegisterPage() {
       <div className="max-w-2xl mx-auto px-6 py-10">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-stone-800">営業マンとして登録する</h1>
-          <p className="text-stone-500 text-sm mt-1">会社のメールアドレスで登録してください。</p>
+          <p className="text-stone-500 text-sm mt-1">メールアドレスで登録してください。</p>
           {step !== 'email_sent' && (
             <div className="flex items-center gap-2 mt-4">
               <span className={`text-xs font-bold px-3 py-1 rounded-full ${step === 1 ? 'bg-orange-500 text-white' : 'bg-green-100 text-green-600'}`}>
@@ -280,30 +315,41 @@ export default function SalespersonRegisterPage() {
                 <label className="block text-xs font-medium text-stone-500 mb-1">所属会社 <span className="text-red-400">*</span></label>
                 <select
                   value={selectedCompanyId}
-                  onChange={(e) => {
-                    setSelectedCompanyId(e.target.value)
-                    setSelectedCompany(companies.find((c) => c.id === e.target.value) ?? null)
-                  }}
+                  onChange={(e) => setSelectedCompanyId(e.target.value)}
                   className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white"
                 >
                   <option value="">会社を選択してください</option>
                   {companies.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
+                  <option value={OTHER_COMPANY_ID}>その他・未登録会社</option>
                 </select>
-                {selectedCompany && (
-                  <p className="text-xs text-stone-400 mt-1">使用可能ドメイン: {selectedCompany.domains.map((d) => `@${d}`).join('、')}</p>
-                )}
               </div>
+
+              {isOtherCompany && (
+                <div>
+                  <label className="block text-xs font-medium text-stone-500 mb-1">会社名 <span className="text-red-400">*</span></label>
+                  <input
+                    type="text"
+                    value={companyNameInput}
+                    onChange={(e) => setCompanyNameInput(e.target.value)}
+                    placeholder="例: ○○工務店、△△ホーム"
+                    className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  />
+                  <p className="text-xs text-stone-400 mt-1">一覧にない会社・工務店も申請できます。確認後に公開されます。</p>
+                </div>
+              )}
+
               <div>
-                <label className="block text-xs font-medium text-stone-500 mb-1">会社メールアドレス <span className="text-red-400">*</span></label>
+                <label className="block text-xs font-medium text-stone-500 mb-1">メールアドレス <span className="text-red-400">*</span></label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={selectedCompany ? `yourname@${selectedCompany.domains[0]}` : 'example@company.co.jp'}
+                  placeholder="example@company.co.jp"
                   className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
                 />
+                <p className="text-xs text-stone-400 mt-1">会社メールアドレス以外（Gmail等）でも登録できます。確認が取れるまで非公開となります。</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-stone-500 mb-1">パスワード <span className="text-red-400">*</span></label>
@@ -351,18 +397,22 @@ export default function SalespersonRegisterPage() {
                 <p className="text-sm text-green-700 font-medium">✓ メールアドレスを確認しました</p>
               </div>
 
-              {/* 所属会社（読み取り専用） */}
+              {/* 所属会社表示 */}
               {selectedCompany && (
                 <div className="mb-4 px-4 py-3 bg-stone-50 border border-stone-200 rounded-xl">
-                  <p className="text-xs text-stone-400 mb-0.5">所属会社（メール認証済み）</p>
+                  <p className="text-xs text-stone-400 mb-0.5">所属会社</p>
                   <p className="text-sm font-medium text-stone-700">{selectedCompany.name}</p>
+                </div>
+              )}
+              {isOtherCompany && companyNameInput && (
+                <div className="mb-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+                  <p className="text-xs text-amber-500 mb-0.5">所属会社（確認待ち）</p>
+                  <p className="text-sm font-medium text-stone-700">{companyNameInput}</p>
                 </div>
               )}
 
               <h2 className="font-bold text-stone-700 mb-4">基本情報</h2>
               <div className="space-y-4">
-
-                {/* ② 姓・名 */}
                 <div>
                   <label className="block text-xs font-medium text-stone-500 mb-1">氏名 <span className="text-red-400">*</span></label>
                   <div className="grid grid-cols-2 gap-3">
@@ -383,7 +433,6 @@ export default function SalespersonRegisterPage() {
                   </div>
                 </div>
 
-                {/* ⑤ 所属詳細 */}
                 <div>
                   <label className="block text-xs font-medium text-stone-500 mb-1">所属詳細</label>
                   <input
@@ -394,11 +443,10 @@ export default function SalespersonRegisterPage() {
                     className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
                   />
                 </div>
-
               </div>
             </div>
 
-            {/* ⑥ 活動エリア */}
+            {/* 活動エリア */}
             <div className="bg-white rounded-2xl shadow-sm p-6">
               <h2 className="font-bold text-stone-700 mb-4">活動エリア</h2>
               <div className="space-y-4">
@@ -444,7 +492,7 @@ export default function SalespersonRegisterPage() {
               </div>
             </div>
 
-            {/* ⑦ 会話スタイル */}
+            {/* 会話スタイル */}
             <div className="bg-white rounded-2xl shadow-sm p-6">
               <h2 className="font-bold text-stone-700 mb-1">会話スタイル</h2>
               <p className="text-xs text-stone-400 mb-5">あなたの営業スタイルを5段階で教えてください</p>
@@ -492,7 +540,7 @@ export default function SalespersonRegisterPage() {
               disabled={step2Loading}
               className="w-full bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-bold py-4 rounded-2xl transition-colors text-sm"
             >
-              {step2Loading ? '登録中...' : '登録して公開する'}
+              {step2Loading ? '登録中...' : '登録する'}
             </button>
           </div>
         )}
