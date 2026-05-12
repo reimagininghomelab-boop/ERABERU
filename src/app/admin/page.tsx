@@ -15,6 +15,9 @@ export default function AdminPage() {
   const [tab, setTab] = useState<'pending' | 'approved' | 'salesperson' | 'suspended'>('pending')
   const [applications, setApplications] = useState<any[]>([])
   const [processingAppId, setProcessingAppId] = useState<string | null>(null)
+  const [aiGeneratingId, setAiGeneratingId] = useState<string | null>(null)
+  const [aiResults, setAiResults] = useState<Record<string, { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[]; caution: string }>>({})
+  const [aiErrors, setAiErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const supabase = createClient()
@@ -92,6 +95,27 @@ export default function AdminPage() {
     setProcessingAppId(null)
   }
 
+
+  const handleGenerateAiIntro = async (appId: string) => {
+    setAiGeneratingId(appId)
+    setAiErrors((prev) => { const next = { ...prev }; delete next[appId]; return next })
+    try {
+      const res = await fetch('/api/ai/sales-intro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ salespersonId: appId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setAiErrors((prev) => ({ ...prev, [appId]: data.error ?? 'エラーが発生しました' }))
+      } else {
+        setAiResults((prev) => ({ ...prev, [appId]: data.result }))
+      }
+    } catch {
+      setAiErrors((prev) => ({ ...prev, [appId]: '通信エラーが発生しました' }))
+    }
+    setAiGeneratingId(null)
+  }
 
   const handleMakePrivate = async (appId: string) => {
     if (!confirm('この営業マンを非公開にしますか？')) return
@@ -281,7 +305,7 @@ export default function AdminPage() {
                 {a.bio && <p className="text-sm text-gray-700 leading-relaxed mt-2 line-clamp-3">{a.bio}</p>}
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {a.status === 'active' && (
                   <button
                     onClick={() => handleMakePrivate(a.id)}
@@ -300,7 +324,31 @@ export default function AdminPage() {
                     {processingAppId === a.id ? '処理中...' : '再公開'}
                   </button>
                 )}
+                <button
+                  onClick={() => handleGenerateAiIntro(a.id)}
+                  disabled={aiGeneratingId === a.id}
+                  className="flex-1 bg-purple-500 hover:bg-purple-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-2.5 rounded-xl transition text-sm"
+                >
+                  {aiGeneratingId === a.id ? 'AI生成中...' : '✨ AI紹介文を生成'}
+                </button>
               </div>
+
+              {aiErrors[a.id] && (
+                <p className="text-xs text-red-500 mt-2">{aiErrors[a.id]}</p>
+              )}
+              {aiResults[a.id] && (() => {
+                const r = aiResults[a.id]
+                return (
+                  <div className="mt-3 p-4 bg-purple-50 border border-purple-100 rounded-xl text-xs space-y-2">
+                    <p className="font-bold text-purple-700">AI紹介文（確認用）</p>
+                    <p className="text-gray-700 leading-relaxed">{r.summary}</p>
+                    <p className="text-gray-500"><span className="font-medium">相性が良い施主:</span> {r.goodMatch.join('、')}</p>
+                    <p className="text-gray-500"><span className="font-medium">会話スタイル:</span> {r.communicationStyle}</p>
+                    <p className="text-gray-500"><span className="font-medium">強み:</span> {r.strengths.join('、')}</p>
+                    <p className="text-gray-500"><span className="font-medium">注意点:</span> {r.caution}</p>
+                  </div>
+                )
+              })()}
             </div>
           )
 
