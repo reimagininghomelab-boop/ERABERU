@@ -24,12 +24,13 @@ export default function AdminPage() {
 
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
+      console.log('[ADMIN DEBUG] user uid:', user?.id, 'email:', user?.email)
       if (!user || !ADMIN_EMAILS.includes(user.email ?? '')) {
         router.replace('/')
         return
       }
 
-      const [{ data: reviewData }, { data: agentData }, { data: appData }] = await Promise.all([
+      const [{ data: reviewData }, { data: agentData }, { data: appData, error: appError }] = await Promise.all([
         supabase
           .from('contract_reviews')
           .select('id, salesperson_id, user_id, rating, content, meeting_status, contract_price, is_approved, created_at')
@@ -49,6 +50,7 @@ export default function AdminPage() {
         agentData.forEach((a) => { map[a.id] = a.company_name })
         setAgentMap(map)
       }
+      console.log('[ADMIN DEBUG] appData count:', appData?.length, 'error:', appError?.message)
       if (appData) setApplications(appData)
       setLoading(false)
     }
