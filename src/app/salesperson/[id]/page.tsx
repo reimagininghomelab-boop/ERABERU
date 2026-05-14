@@ -531,11 +531,55 @@ export default function SalespersonDetail() {
             <div className="flex items-center gap-2 mb-3">
               <span className="text-purple-500">✨</span>
               <p className="text-sm font-bold text-purple-600">AIによる紹介文</p>
-              <span className="text-xs bg-purple-100 text-purple-400 px-2 py-0.5 rounded-full ml-auto">準備中</span>
+              {!agent.ai_summary && (
+                <span className="text-xs bg-purple-100 text-purple-400 px-2 py-0.5 rounded-full ml-auto">準備中</span>
+              )}
             </div>
-            <p className="text-sm text-gray-400 leading-relaxed">
-              口コミ・自己紹介・実績をもとにAIが生成した紹介文がここに表示されます。
-            </p>
+            {agent.ai_summary ? (() => {
+              const ai = agent.ai_summary as { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[]; caution: string }
+              return (
+                <div className="space-y-4 text-sm">
+                  <p className="text-gray-700 leading-relaxed">{ai.summary}</p>
+                  {ai.goodMatch?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-400 mb-1.5">相性が良さそうな施主</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {ai.goodMatch.map((m, i) => (
+                          <span key={i} className="text-xs bg-purple-50 text-purple-600 border border-purple-100 px-2.5 py-1 rounded-full">{m}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {ai.communicationStyle && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-400 mb-1">会話スタイル</p>
+                      <p className="text-gray-600 leading-relaxed">{ai.communicationStyle}</p>
+                    </div>
+                  )}
+                  {ai.strengths?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-400 mb-1.5">強み</p>
+                      <ul className="space-y-1">
+                        {ai.strengths.map((s, i) => (
+                          <li key={i} className="text-gray-600 flex items-start gap-1.5"><span className="text-purple-400 mt-0.5">・</span>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {ai.caution && (
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                      <p className="text-xs font-medium text-amber-600 mb-1">確認しておきたい点</p>
+                      <p className="text-amber-700 leading-relaxed">{ai.caution}</p>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-300 pt-1">※ プロフィール情報をもとにAIが生成した紹介文です</p>
+                </div>
+              )
+            })() : (
+              <p className="text-sm text-gray-400 leading-relaxed">
+                口コミ・自己紹介・実績をもとにAIが生成した紹介文がここに表示されます。
+              </p>
+            )}
           </div>
           </>
         )}

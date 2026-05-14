@@ -38,7 +38,7 @@ export default function AdminPage() {
           .select('id, company_name'),
         supabase
           .from('salesperson_profiles')
-          .select('id, real_name, company_name, area_prefecture, experience_years, bio, status, created_at')
+          .select('id, real_name, company_name, area_prefecture, experience_years, bio, status, ai_summary, created_at')
           .order('created_at', { ascending: false }),
       ])
 
@@ -327,7 +327,7 @@ export default function AdminPage() {
                   disabled={aiGeneratingId === a.id}
                   className="flex-1 bg-purple-500 hover:bg-purple-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-2.5 rounded-xl transition text-sm"
                 >
-                  {aiGeneratingId === a.id ? 'AI生成中...' : '✨ AI紹介文を生成'}
+                  {aiGeneratingId === a.id ? 'AI生成中...' : a.ai_summary ? '✨ AI紹介文を再生成' : '✨ AI紹介文を生成'}
                 </button>
               </div>
 

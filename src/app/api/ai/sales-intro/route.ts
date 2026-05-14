@@ -102,6 +102,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await generateSalesIntro(input)
+
+    await supabase
+      .from('salesperson_profiles')
+      .update({ ai_summary: result })
+      .eq('id', salespersonId)
+
     return NextResponse.json({ result })
   } catch (err) {
     const message = err instanceof Error ? err.message : '不明なエラー'
