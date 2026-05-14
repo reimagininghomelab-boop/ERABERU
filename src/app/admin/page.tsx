@@ -18,17 +18,18 @@ export default function AdminPage() {
   const [aiGeneratingId, setAiGeneratingId] = useState<string | null>(null)
   const [aiResults, setAiResults] = useState<Record<string, { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[]; caution: string }>>({})
   const [aiErrors, setAiErrors] = useState<Record<string, string>>({})
+  const [debugInfo, setDebugInfo] = useState<string>('')
 
   useEffect(() => {
     const supabase = createClient()
 
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      console.log('[ADMIN DEBUG] user uid:', user?.id, 'email:', user?.email)
       if (!user || !ADMIN_EMAILS.includes(user.email ?? '')) {
         router.replace('/')
         return
       }
+      setDebugInfo(`uid: ${user.id} / email: ${user.email}`)
 
       const [{ data: reviewData }, { data: agentData }, { data: appData, error: appError }] = await Promise.all([
         supabase
@@ -50,7 +51,7 @@ export default function AdminPage() {
         agentData.forEach((a) => { map[a.id] = a.company_name })
         setAgentMap(map)
       }
-      console.log('[ADMIN DEBUG] appData count:', appData?.length, 'error:', appError?.message)
+      setDebugInfo(prev => prev + ` / 取得件数: ${appData?.length ?? 0} / エラー: ${appError?.message ?? 'なし'}`)
       if (appData) setApplications(appData)
       setLoading(false)
     }
@@ -150,6 +151,13 @@ export default function AdminPage() {
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-bold text-gray-800">管理画面</h1>
           <span className="text-xs bg-orange-100 text-orange-600 px-3 py-1 rounded-full font-medium">管理者専用</span>
+        </div>
+        {debugInfo && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-xl text-xs text-yellow-800 break-all">
+            🔍 DEBUG: {debugInfo}
+          </div>
+        )}
+        <div className="hidden">{/* dummy */}
         </div>
 
         {/* タブ */}
