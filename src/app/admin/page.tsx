@@ -152,11 +152,9 @@ export default function AdminPage() {
           <h1 className="text-xl font-bold text-gray-800">管理画面</h1>
           <span className="text-xs bg-orange-100 text-orange-600 px-3 py-1 rounded-full font-medium">管理者専用</span>
         </div>
-        {debugInfo && (
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-xl text-xs text-yellow-800 break-all">
-            🔍 DEBUG: {debugInfo}
-          </div>
-        )}
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-xl text-xs text-yellow-800 break-all">
+          🔍 DEBUG v2: {debugInfo || '（未取得）'}
+        </div>
         <div className="hidden">{/* dummy */}
         </div>
 
