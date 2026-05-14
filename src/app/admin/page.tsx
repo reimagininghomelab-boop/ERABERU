@@ -150,7 +150,7 @@ export default function AdminPage() {
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-bold text-gray-800">管理画面</h1>
-          <span className="text-xs bg-orange-100 text-orange-600 px-3 py-1 rounded-full font-medium">管理者専用</span>
+          <span className="text-xs bg-orange-100 text-orange-600 px-3 py-1 rounded-full font-medium">管理者専用 [v4]</span>
         </div>
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-xl text-xs text-yellow-800 break-all">
           🔍 DEBUG v2: {debugInfo || '（未取得）'}
