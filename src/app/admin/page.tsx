@@ -18,7 +18,6 @@ export default function AdminPage() {
   const [aiGeneratingId, setAiGeneratingId] = useState<string | null>(null)
   const [aiResults, setAiResults] = useState<Record<string, { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[]; caution: string }>>({})
   const [aiErrors, setAiErrors] = useState<Record<string, string>>({})
-  const [debugInfo, setDebugInfo] = useState<string>('')
 
   useEffect(() => {
     const supabase = createClient()
@@ -29,9 +28,7 @@ export default function AdminPage() {
         router.replace('/')
         return
       }
-      setDebugInfo(`uid: ${user.id} / email: ${user.email}`)
-
-      const [{ data: reviewData }, { data: agentData }, { data: appData, error: appError }] = await Promise.all([
+      const [{ data: reviewData }, { data: agentData }, { data: appData }] = await Promise.all([
         supabase
           .from('contract_reviews')
           .select('id, salesperson_id, user_id, rating, content, meeting_status, contract_price, is_approved, created_at')
@@ -51,7 +48,6 @@ export default function AdminPage() {
         agentData.forEach((a) => { map[a.id] = a.company_name })
         setAgentMap(map)
       }
-      setDebugInfo(prev => prev + ` / 取得件数: ${appData?.length ?? 0} / エラー: ${appError?.message ?? 'なし'}`)
       if (appData) setApplications(appData)
       setLoading(false)
     }
@@ -150,14 +146,8 @@ export default function AdminPage() {
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-xl font-bold text-gray-800">管理画面</h1>
-          <span className="text-xs bg-orange-100 text-orange-600 px-3 py-1 rounded-full font-medium">管理者専用 [v4]</span>
+          <span className="text-xs bg-orange-100 text-orange-600 px-3 py-1 rounded-full font-medium">管理者専用</span>
         </div>
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded-xl text-xs text-yellow-800 break-all">
-          🔍 DEBUG v2: {debugInfo || '（未取得）'}
-        </div>
-        <div className="hidden">{/* dummy */}
-        </div>
-
         {/* タブ */}
         <div className="flex gap-2 mb-6 flex-wrap">
           <button
