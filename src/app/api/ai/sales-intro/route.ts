@@ -90,6 +90,26 @@ export async function POST(request: NextRequest) {
     contract_price: r.contract_price as number | null,
   }))
 
+  const qualifications = Array.isArray(profile.qualifications)
+    ? (profile.qualifications as string[])
+    : []
+  const bio = (profile.bio as string | null) ?? null
+  const salesStyles = (profile.sales_styles as Record<string, number>) ?? {}
+
+  // 紹介文を生成するのに十分なデータがあるか確認
+  const hasEnoughData =
+    reviews.length > 0 ||
+    qualifications.length > 0 ||
+    (bio && bio.trim().length > 0) ||
+    Object.keys(salesStyles).length > 0
+
+  if (!hasEnoughData) {
+    return NextResponse.json(
+      { error: 'データが不足しているため紹介文を生成できません。口コミ・資格・自己紹介・会話スタイルのいずれかを入力してください。' },
+      { status: 422 }
+    )
+  }
+
   const input: SalesIntroInput = {
     companyName,
     department: profile.department as string | null,
@@ -97,11 +117,9 @@ export async function POST(request: NextRequest) {
     availablePrefectures: Array.isArray(profile.available_prefectures)
       ? (profile.available_prefectures as string[])
       : [],
-    qualifications: Array.isArray(profile.qualifications)
-      ? (profile.qualifications as string[])
-      : [],
-    salesStyles: (profile.sales_styles as Record<string, number>) ?? {},
-    bio: profile.bio as string | null,
+    qualifications,
+    salesStyles,
+    bio,
     isVerified: Boolean(profile.is_verified),
     reviews,
   }
