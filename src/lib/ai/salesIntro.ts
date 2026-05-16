@@ -1,7 +1,13 @@
 import OpenAI from 'openai'
 
+export type SalesIntroReview = {
+  rating: number
+  content: string
+  meeting_status: string | null
+  contract_price: number | null
+}
+
 export type SalesIntroInput = {
-  displayName: string
   companyName: string | null
   department: string | null
   coreCity: string | null
@@ -10,7 +16,7 @@ export type SalesIntroInput = {
   salesStyles: Record<string, number>
   bio: string | null
   isVerified: boolean
-  // 将来口コミデータを追加する際はここに reviews フィールドを追加
+  reviews: SalesIntroReview[]
 }
 
 export type SalesIntroOutput = {
@@ -54,52 +60,63 @@ export async function generateSalesIntro(input: SalesIntroInput): Promise<SalesI
 
   const stylesDescription = describeSalesStyles(input.salesStyles)
 
+  // 口コミセクション（メイン情報）
+  const reviewsText = input.reviews.length > 0
+    ? input.reviews.map((r, i) => {
+        const parts = [`口コミ${i + 1}（評価${r.rating}/5）`]
+        if (r.meeting_status) parts.push(`打ち合わせ状況: ${r.meeting_status}`)
+        if (r.contract_price) parts.push(`成約価格: ${Math.round(r.contract_price / 10000)}万円`)
+        parts.push(`コメント: ${r.content}`)
+        return parts.join(' / ')
+      }).join('\n')
+    : '（口コミなし）'
+
   const profileText = [
-    `氏名: ${input.displayName}`,
-    input.companyName ? `会社名: ${input.companyName}` : null,
-    input.department ? `所属部署: ${input.department}` : null,
-    input.coreCity ? `コアエリア: ${input.coreCity}` : null,
+    // 名前・個人特定情報は含めない（①）
+    input.companyName ? `会社: ${input.companyName}` : null,
+    input.department ? `部署: ${input.department}` : null,
+    input.coreCity ? `活動エリア: ${input.coreCity}` : null,
     input.availablePrefectures.length > 0
-      ? `対応可能エリア: ${input.availablePrefectures.join('、')}`
+      ? `対応エリア: ${input.availablePrefectures.join('、')}`
       : null,
     input.qualifications.length > 0
-      ? `保有資格: ${input.qualifications.join('、')}`
+      ? `資格（裏付け情報）: ${input.qualifications.join('、')}`
       : null,
     stylesDescription
-      ? `会話スタイル（本人申告）:\n${stylesDescription}`
-      : '会話スタイル: 未回答',
-    input.bio ? `自己紹介:\n${input.bio}` : null,
-    input.isVerified ? '本人確認済み' : null,
+      ? `スタイル評価（参考）:\n${stylesDescription}`
+      : null,
+    input.bio
+      ? `本人コメント（参考程度）:\n${input.bio}`
+      : null,
+    `\n【施主からの口コミ（メイン）】\n${reviewsText}`,
   ].filter(Boolean).join('\n')
 
-  const systemPrompt = `あなたは住宅購入を検討している施主が「この営業マンと相性が合うか」を判断しやすくするための紹介文を作成する専門家です。
+  const systemPrompt = `あなたは住宅購入を検討している施主に向けて、住宅営業マンを紹介するアドバイザーです。
+親しい友人から「この営業さん、あなたに合いそうだよ」と教えてもらうような、温かく前向きなトーンで書いてください。
 
 ## 絶対に守るルール
-- データにない実績・能力・受賞歴・顧客満足度・数字を作らない
-- 「おすすめです」「最高です」などの断定的な褒め言葉を使わない
-- 「相性が良さそうです」「確認するとよいでしょう」など判断補助の表現にする
-- 営業を過度に褒めず、施主が自分で判断できる情報を提供する
-
-## 情報が少ない場合の対処
-- bio や会話スタイルが空・未回答の場合は、他の情報（エリア・資格・会社名など）から自然に紹介文を組み立てる
-- 会話スタイルが「未回答」の場合、communicationStyle は「プロフィール情報からは確認しきれません。面談で直接確認することをおすすめします」とする
-- 情報がない項目について推測や創作はしない
+- 営業マンの氏名・連絡先・具体的な勤務場所・住所は一切含めない（開示後に分かることのため）
+- データにない実績・受賞歴・数字を作らない
+- 口コミがある場合はそれをメイン情報とし、資格や会社情報で裏付ける
+- 本人の自己紹介・スタイル評価は参考程度にとどめる
+- 口コミがない場合は、資格・エリア・スタイルから自然に紹介文を組み立てる
 
 ## 文章の方針
-- 合いそうな施主像だけでなく、相性が分かれそうな点も必ず出す
-- 施主が次に確認すべき観点（例：建築実績の詳細、打ち合わせ頻度など）を含める
-- 「プロフィール情報をもとにした紹介です」という前提が伝わる表現にする
-- 一般の施主が読んで自然な日本語にする
+- 前向きで温かい口調。友人からのアドバイスのような自然な日本語
+- 「こんな施主に合いそう」を前面に出す
+- 気をつける点は書くとしてもやわらかく、あくまで「確認してみて」程度に
+- summary は日本語で100文字程度（短くまとめる）
+- goodMatch は具体的な施主像を3つ（「〇〇な方」の形で）
 
 ## 出力形式
 必ず以下のJSON形式のみを返す。前後に説明文・コードブロックを付けない。
 
 {
-  "summary": "施主向けの営業紹介文（2〜4文）",
-  "goodMatch": ["相性が良さそうな施主タイプ1", "タイプ2", "タイプ3"],
-  "communicationStyle": "会話・提案スタイルの説明（1〜2文）",
+  "summary": "施主向けの紹介文（100文字程度）",
+  "goodMatch": ["〇〇な方", "〇〇な方", "〇〇な方"],
+  "communicationStyle": "会話スタイルの説明（1〜2文）",
   "strengths": ["強み1", "強み2", "強み3"],
-  "caution": "相性が分かれそうな点・施主が次に確認すべき観点（1〜2文）"
+  "caution": "確認してみるといい点（やわらかく1文）"
 }`
 
   const response = await client.chat.completions.create({
@@ -107,7 +124,7 @@ export async function generateSalesIntro(input: SalesIntroInput): Promise<SalesI
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `以下の営業マン情報をもとに紹介文を生成してください。\n\n${profileText}` },
+      { role: 'user', content: `以下の情報をもとに紹介文を生成してください。\n\n${profileText}` },
     ],
     response_format: { type: 'json_object' },
     temperature: 0.7,

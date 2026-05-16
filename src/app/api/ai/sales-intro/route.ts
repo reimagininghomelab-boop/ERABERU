@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
-import { generateSalesIntro, type SalesIntroInput } from '@/lib/ai/salesIntro'
+import { generateSalesIntro, type SalesIntroInput, type SalesIntroReview } from '@/lib/ai/salesIntro'
 
 const ADMIN_EMAILS = ['reimagining.home.lab@gmail.com', '1989yo55@gmail.com']
 
@@ -40,26 +40,30 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '権限がありません' }, { status: 403 })
   }
 
-  const { data: profile, error: profileError } = await supabase
-    .from('salesperson_profiles')
-    .select(`
-      id,
-      real_name,
-      family_name,
-      given_name,
-      company_id,
-      application_company_name,
-      department,
-      core_city,
-      available_prefectures,
-      qualifications,
-      sales_styles,
-      bio,
-      status,
-      is_verified
-    `)
-    .eq('id', salespersonId)
-    .maybeSingle()
+  // プロフィールと承認済み口コミを並行取得
+  const [{ data: profile, error: profileError }, { data: reviewData }] = await Promise.all([
+    supabase
+      .from('salesperson_profiles')
+      .select(`
+        id,
+        company_id,
+        application_company_name,
+        department,
+        core_city,
+        available_prefectures,
+        qualifications,
+        sales_styles,
+        bio,
+        is_verified
+      `)
+      .eq('id', salespersonId)
+      .maybeSingle(),
+    supabase
+      .from('contract_reviews')
+      .select('rating, content, meeting_status, contract_price')
+      .eq('salesperson_id', salespersonId)
+      .eq('is_approved', true),
+  ])
 
   if (profileError) {
     return NextResponse.json({ error: 'プロフィール取得に失敗しました: ' + profileError.message }, { status: 500 })
@@ -68,7 +72,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '該当する営業マンが見つかりません' }, { status: 404 })
   }
 
-  // 会社名の解決: company_id があれば companies テーブルから取得
+  // 会社名の解決
   let companyName: string | null = profile.application_company_name as string | null
   if (profile.company_id) {
     const { data: company } = await supabase
@@ -79,13 +83,14 @@ export async function POST(request: NextRequest) {
     if (company) companyName = company.name as string
   }
 
-  const displayName =
-    (profile.family_name && profile.given_name)
-      ? `${profile.family_name} ${profile.given_name}`
-      : (profile.real_name as string | null) ?? '（氏名未設定）'
+  const reviews: SalesIntroReview[] = (reviewData ?? []).map((r) => ({
+    rating: r.rating as number,
+    content: r.content as string,
+    meeting_status: r.meeting_status as string | null,
+    contract_price: r.contract_price as number | null,
+  }))
 
   const input: SalesIntroInput = {
-    displayName,
     companyName,
     department: profile.department as string | null,
     coreCity: profile.core_city as string | null,
@@ -98,6 +103,7 @@ export async function POST(request: NextRequest) {
     salesStyles: (profile.sales_styles as Record<string, number>) ?? {},
     bio: profile.bio as string | null,
     isVerified: Boolean(profile.is_verified),
+    reviews,
   }
 
   try {
