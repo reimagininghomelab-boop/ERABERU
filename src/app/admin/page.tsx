@@ -334,15 +334,31 @@ export default function AdminPage() {
               {aiErrors[a.id] && (
                 <p className="text-xs text-red-500 mt-2">{aiErrors[a.id]}</p>
               )}
-              {aiResults[a.id] && (() => {
-                const r = aiResults[a.id]
+              {(() => {
+                const r = aiResults[a.id] ?? (a.ai_summary as { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[] } | null)
+                if (!r) return null
+                const isNew = !!aiResults[a.id]
                 return (
-                  <div className="mt-3 p-4 bg-purple-50 border border-purple-100 rounded-xl text-xs space-y-2">
-                    <p className="font-bold text-purple-700">AI紹介文（確認用）</p>
-                    <p className="text-gray-700 leading-relaxed">{r.summary}</p>
-                    <p className="text-gray-500"><span className="font-medium">相性が良い施主:</span> {r.goodMatch.join('、')}</p>
-                    <p className="text-gray-500"><span className="font-medium">会話スタイル:</span> {r.communicationStyle}</p>
-                    <p className="text-gray-500"><span className="font-medium">強み:</span> {r.strengths.join('、')}</p>
+                  <div className="mt-3 p-4 bg-purple-50 border border-purple-100 rounded-xl text-xs space-y-3">
+                    <p className="font-bold text-purple-700">
+                      AI紹介文{isNew ? '（生成完了）' : '（保存済み）'}
+                    </p>
+                    <div>
+                      <p className="font-medium text-gray-400 mb-1">この営業マンの雰囲気</p>
+                      <p className="text-gray-700 leading-relaxed">{r.summary}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-400 mb-1">相性がよさそうな方</p>
+                      <p className="text-gray-600">{r.goodMatch.join('、')}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-400 mb-1">会話スタイル</p>
+                      <p className="text-gray-600">{r.communicationStyle}</p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-400 mb-1">得意なサポート</p>
+                      <p className="text-gray-600">{r.strengths.join('、')}</p>
+                    </div>
                   </div>
                 )
               })()}

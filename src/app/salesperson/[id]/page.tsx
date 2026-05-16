@@ -349,10 +349,13 @@ export default function SalespersonDetail() {
                       <span className="text-purple-500">✨</span>
                       <p className="text-xs font-bold text-purple-600">AIによる紹介文</p>
                     </div>
-                    <p className="text-gray-700 leading-relaxed">{ai.summary}</p>
+                    <div>
+                      <p className="text-xs font-medium text-gray-400 mb-1">この営業マンの雰囲気</p>
+                      <p className="text-gray-700 leading-relaxed">{ai.summary}</p>
+                    </div>
                     {ai.goodMatch?.length > 0 && (
                       <div>
-                        <p className="text-xs font-medium text-gray-400 mb-1.5">相性が良さそうな施主</p>
+                        <p className="text-xs font-medium text-gray-400 mb-1.5">相性がよさそうな方</p>
                         <div className="flex flex-wrap gap-1.5">
                           {ai.goodMatch.map((m, i) => (
                             <span key={i} className="text-xs bg-white text-purple-600 border border-purple-200 px-2.5 py-1 rounded-full">{m}</span>
@@ -368,7 +371,7 @@ export default function SalespersonDetail() {
                     )}
                     {ai.strengths?.length > 0 && (
                       <div>
-                        <p className="text-xs font-medium text-gray-400 mb-1.5">強み</p>
+                        <p className="text-xs font-medium text-gray-400 mb-1.5">得意なサポート</p>
                         <ul className="space-y-1">
                           {ai.strengths.map((s, i) => (
                             <li key={i} className="text-gray-600 flex items-start gap-1.5"><span className="text-purple-400 mt-0.5">・</span>{s}</li>
@@ -581,7 +584,7 @@ export default function SalespersonDetail() {
                   <p className="text-gray-700 leading-relaxed">{ai.summary}</p>
                   {ai.goodMatch?.length > 0 && (
                     <div>
-                      <p className="text-xs font-medium text-gray-400 mb-1.5">相性が良さそうな施主</p>
+                      <p className="text-xs font-medium text-gray-400 mb-1.5">相性がよさそうな方</p>
                       <div className="flex flex-wrap gap-1.5">
                         {ai.goodMatch.map((m, i) => (
                           <span key={i} className="text-xs bg-purple-50 text-purple-600 border border-purple-100 px-2.5 py-1 rounded-full">{m}</span>
@@ -597,7 +600,7 @@ export default function SalespersonDetail() {
                   )}
                   {ai.strengths?.length > 0 && (
                     <div>
-                      <p className="text-xs font-medium text-gray-400 mb-1.5">強み</p>
+                      <p className="text-xs font-medium text-gray-400 mb-1.5">得意なサポート</p>
                       <ul className="space-y-1">
                         {ai.strengths.map((s, i) => (
                           <li key={i} className="text-gray-600 flex items-start gap-1.5"><span className="text-purple-400 mt-0.5">・</span>{s}</li>
