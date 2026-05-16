@@ -24,7 +24,7 @@ export type SalesIntroOutput = {
   goodMatch: string[]
   communicationStyle: string
   strengths: string[]
-  caution: string
+  caution?: string
 }
 
 const STYLE_AXIS_LABELS: Record<string, { left: string; right: string }> = {
@@ -101,10 +101,19 @@ export async function generateSalesIntro(input: SalesIntroInput): Promise<SalesI
 - 本人の自己紹介・スタイル評価は参考程度にとどめる
 - 口コミがない場合は、資格・エリア・スタイルから自然に紹介文を組み立てる
 
+## 口コミの分析方法（重要）
+口コミには「会社・商品・価格への評価」と「この営業マン個人への評価」が混在している。
+紹介文に使うのは「この営業マン個人への評価」のみ。
+具体的には以下を営業個人への評価として扱う：
+- 対応の丁寧さ・スピード・誠実さ
+- 提案力・ヒアリング力・説明のわかりやすさ
+- 打ち合わせ中のコミュニケーション
+会社の製品・価格・アフターサービス全般への評価は紹介文に含めない。
+
 ## 文章の方針
 - 前向きで温かい口調。友人からのアドバイスのような自然な日本語
 - 「こんな施主に合いそう」を前面に出す
-- 気をつける点は書くとしてもやわらかく、あくまで「確認してみて」程度に
+- 注意点・気をつける点は書かない
 - summary は日本語で100文字程度（短くまとめる）
 - goodMatch は具体的な施主像を3つ（「〇〇な方」の形で）
 
@@ -115,8 +124,7 @@ export async function generateSalesIntro(input: SalesIntroInput): Promise<SalesI
   "summary": "施主向けの紹介文（100文字程度）",
   "goodMatch": ["〇〇な方", "〇〇な方", "〇〇な方"],
   "communicationStyle": "会話スタイルの説明（1〜2文）",
-  "strengths": ["強み1", "強み2", "強み3"],
-  "caution": "確認してみるといい点（やわらかく1文）"
+  "strengths": ["強み1", "強み2", "強み3"]
 }`
 
   const response = await client.chat.completions.create({

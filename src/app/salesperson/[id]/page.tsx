@@ -342,7 +342,7 @@ export default function SalespersonDetail() {
                 </p>
               </div>
               {agent.ai_summary && (() => {
-                const ai = agent.ai_summary as { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[]; caution: string }
+                const ai = agent.ai_summary as { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[] }
                 return (
                   <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 space-y-3 text-sm">
                     <div className="flex items-center gap-1.5 mb-1">
@@ -374,12 +374,6 @@ export default function SalespersonDetail() {
                             <li key={i} className="text-gray-600 flex items-start gap-1.5"><span className="text-purple-400 mt-0.5">・</span>{s}</li>
                           ))}
                         </ul>
-                      </div>
-                    )}
-                    {ai.caution && (
-                      <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
-                        <p className="text-xs font-medium text-amber-600 mb-1">確認しておきたい点</p>
-                        <p className="text-amber-700 leading-relaxed">{ai.caution}</p>
                       </div>
                     )}
                     <p className="text-xs text-gray-300 pt-1">※ プロフィール情報をもとにAIが生成した紹介文です</p>
@@ -581,7 +575,7 @@ export default function SalespersonDetail() {
               )}
             </div>
             {agent.ai_summary ? (() => {
-              const ai = agent.ai_summary as { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[]; caution: string }
+              const ai = agent.ai_summary as { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[] }
               return (
                 <div className="space-y-4 text-sm">
                   <p className="text-gray-700 leading-relaxed">{ai.summary}</p>
@@ -609,12 +603,6 @@ export default function SalespersonDetail() {
                           <li key={i} className="text-gray-600 flex items-start gap-1.5"><span className="text-purple-400 mt-0.5">・</span>{s}</li>
                         ))}
                       </ul>
-                    </div>
-                  )}
-                  {ai.caution && (
-                    <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
-                      <p className="text-xs font-medium text-amber-600 mb-1">確認しておきたい点</p>
-                      <p className="text-amber-700 leading-relaxed">{ai.caution}</p>
                     </div>
                   )}
                   <p className="text-xs text-gray-300 pt-1">※ プロフィール情報をもとにAIが生成した紹介文です</p>
