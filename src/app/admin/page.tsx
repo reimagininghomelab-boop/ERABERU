@@ -107,6 +107,11 @@ export default function AdminPage() {
       const data = await res.json()
       if (!res.ok) {
         setAiErrors((prev) => ({ ...prev, [appId]: data.error ?? 'エラーが発生しました' }))
+        if (res.status === 422) {
+          // データ不足でサーバー側が ai_summary を削除したのでローカル状態も消す
+          setApplications((prev) => prev.map((a) => a.id === appId ? { ...a, ai_summary: null } : a))
+          setAiResults((prev) => { const next = { ...prev }; delete next[appId]; return next })
+        }
       } else {
         setAiResults((prev) => ({ ...prev, [appId]: data.result }))
       }

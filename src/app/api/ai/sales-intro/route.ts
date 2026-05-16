@@ -104,8 +104,12 @@ export async function POST(request: NextRequest) {
     Object.keys(salesStyles).length > 0
 
   if (!hasEnoughData) {
+    await supabase
+      .from('salesperson_profiles')
+      .update({ ai_summary: null })
+      .eq('id', salespersonId)
     return NextResponse.json(
-      { error: 'データが不足しているため紹介文を生成できません。口コミ・資格・自己紹介・会話スタイルのいずれかを入力してください。' },
+      { error: 'データが不足しているため紹介文を生成できません。口コミ・資格・自己紹介・会話スタイルのいずれかを入力してください。既存の紹介文は削除されました。' },
       { status: 422 }
     )
   }
