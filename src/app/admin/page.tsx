@@ -343,7 +343,6 @@ export default function AdminPage() {
                     <p className="text-gray-500"><span className="font-medium">相性が良い施主:</span> {r.goodMatch.join('、')}</p>
                     <p className="text-gray-500"><span className="font-medium">会話スタイル:</span> {r.communicationStyle}</p>
                     <p className="text-gray-500"><span className="font-medium">強み:</span> {r.strengths.join('、')}</p>
-                    <p className="text-gray-500"><span className="font-medium">注意点:</span> {r.caution}</p>
                   </div>
                 )
               })()}
