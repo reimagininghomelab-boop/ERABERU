@@ -31,7 +31,7 @@ export default function AdminPage() {
       const [{ data: reviewData }, { data: agentData }, { data: appData }] = await Promise.all([
         supabase
           .from('contract_reviews')
-          .select('id, salesperson_id, user_id, rating, content, meeting_status, contract_price, is_approved, created_at')
+          .select('id, salesperson_id, user_id, rating, content, meeting_status, contract_price, is_approved, first_approved_at, created_at')
           .order('created_at', { ascending: false }),
         supabase
           .from('safe_salesperson_profiles')
@@ -58,12 +58,32 @@ export default function AdminPage() {
   const handleApprove = async (reviewId: string) => {
     setApprovingId(reviewId)
     const supabase = createClient()
+    const review = reviews.find((r) => r.id === reviewId)
+    const isFirstApproval = !review?.first_approved_at
+    const now = new Date().toISOString()
+
+    const updatePayload: Record<string, unknown> = { is_approved: true }
+    if (isFirstApproval) updatePayload.first_approved_at = now
+
     const { error } = await supabase
       .from('contract_reviews')
-      .update({ is_approved: true })
+      .update(updatePayload)
       .eq('id', reviewId)
+
     if (!error) {
-      setReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, is_approved: true } : r))
+      setReviews((prev) => prev.map((r) =>
+        r.id === reviewId
+          ? { ...r, is_approved: true, first_approved_at: r.first_approved_at ?? now }
+          : r
+      ))
+      // 初回承認のみ自動再生成チェックをバックグラウンドで実行
+      if (isFirstApproval && review?.salesperson_id) {
+        fetch('/api/ai/auto-regenerate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ salespersonId: review.salesperson_id }),
+        }).catch(() => {})
+      }
     }
     setApprovingId(null)
   }

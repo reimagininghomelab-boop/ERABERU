@@ -206,6 +206,20 @@ export default function Home() {
                 </div>
               )}
 
+              {/* AI得意なサポート */}
+              {agent.ai_summary?.strengths?.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-xs text-gray-400 mb-1.5">✨ 得意なサポート</p>
+                  <ul className="space-y-0.5">
+                    {agent.ai_summary.strengths.slice(0, 2).map((s: string, i: number) => (
+                      <li key={i} className="text-xs text-gray-600 flex items-start gap-1">
+                        <span className="text-purple-400 shrink-0">・</span>{s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {/* ボタン */}
               <Link
                 href={`/salesperson/${agent.id}`}
