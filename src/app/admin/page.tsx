@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
+import { QRCodeSVG } from 'qrcode.react'
 
 const ADMIN_EMAILS = ['reimagining.home.lab@gmail.com', '1989yo55@gmail.com']
 
@@ -12,12 +13,16 @@ export default function AdminPage() {
   const [reviews, setReviews] = useState<any[]>([])
   const [agentMap, setAgentMap] = useState<Record<string, string>>({})
   const [approvingId, setApprovingId] = useState<string | null>(null)
-  const [tab, setTab] = useState<'pending' | 'approved' | 'salesperson' | 'suspended'>('pending')
+  const [tab, setTab] = useState<'pending' | 'approved' | 'anon' | 'salesperson' | 'suspended'>('pending')
   const [applications, setApplications] = useState<any[]>([])
   const [processingAppId, setProcessingAppId] = useState<string | null>(null)
   const [aiGeneratingId, setAiGeneratingId] = useState<string | null>(null)
   const [aiResults, setAiResults] = useState<Record<string, { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[]; caution: string }>>({})
   const [aiErrors, setAiErrors] = useState<Record<string, string>>({})
+  const [anonReviews, setAnonReviews] = useState<any[]>([])
+  const [anonApprovingId, setAnonApprovingId] = useState<string | null>(null)
+  const [qrReissuingId, setQrReissuingId] = useState<string | null>(null)
+  const [qrTokenMap, setQrTokenMap] = useState<Record<string, string>>({})
 
   useEffect(() => {
     const supabase = createClient()
@@ -28,7 +33,7 @@ export default function AdminPage() {
         router.replace('/')
         return
       }
-      const [{ data: reviewData }, { data: agentData }, { data: appData }] = await Promise.all([
+      const [{ data: reviewData }, { data: agentData }, { data: appData }, { data: anonData }] = await Promise.all([
         supabase
           .from('contract_reviews')
           .select('id, salesperson_id, user_id, rating, content, meeting_status, contract_price, is_approved, first_approved_at, created_at')
@@ -38,7 +43,11 @@ export default function AdminPage() {
           .select('id, company_name'),
         supabase
           .from('salesperson_profiles')
-          .select('id, real_name, company_name, area_prefecture, experience_years, bio, status, ai_summary, created_at')
+          .select('id, real_name, company_name, area_prefecture, experience_years, bio, status, ai_summary, qr_token, created_at')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('anonymous_reviews')
+          .select('id, salesperson_id, rating, content, is_approved, created_at')
           .order('created_at', { ascending: false }),
       ])
 
@@ -48,7 +57,13 @@ export default function AdminPage() {
         agentData.forEach((a) => { map[a.id] = a.company_name })
         setAgentMap(map)
       }
-      if (appData) setApplications(appData)
+      if (appData) {
+        setApplications(appData)
+        const tokenMap: Record<string, string> = {}
+        appData.forEach((a) => { if (a.qr_token) tokenMap[a.id] = a.qr_token })
+        setQrTokenMap(tokenMap)
+      }
+      if (anonData) setAnonReviews(anonData)
       setLoading(false)
     }
 
@@ -141,6 +156,51 @@ export default function AdminPage() {
     setAiGeneratingId(null)
   }
 
+  const handleAnonApprove = async (reviewId: string) => {
+    setAnonApprovingId(reviewId)
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('anonymous_reviews')
+      .update({ is_approved: true })
+      .eq('id', reviewId)
+    if (!error) {
+      setAnonReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, is_approved: true } : r))
+    }
+    setAnonApprovingId(null)
+  }
+
+  const handleAnonReject = async (reviewId: string) => {
+    setAnonApprovingId(reviewId)
+    const supabase = createClient()
+    const { error } = await supabase
+      .from('anonymous_reviews')
+      .update({ is_approved: false })
+      .eq('id', reviewId)
+    if (!error) {
+      setAnonReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, is_approved: false } : r))
+    }
+    setAnonApprovingId(null)
+  }
+
+  const handleReissueQr = async (salespersonId: string) => {
+    if (!confirm('QRコードを再発行します。以前のQRコードからの投稿ができなくなります。続けますか？')) return
+    setQrReissuingId(salespersonId)
+    try {
+      const newToken = crypto.randomUUID()
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('salesperson_profiles')
+        .update({ qr_token: newToken })
+        .eq('id', salespersonId)
+      if (!error) {
+        setQrTokenMap((prev) => ({ ...prev, [salespersonId]: newToken }))
+      }
+    } catch {
+      // silent
+    }
+    setQrReissuingId(null)
+  }
+
   const handleMakePrivate = async (appId: string) => {
     if (!confirm('この営業マンを非公開にしますか？')) return
     setProcessingAppId(appId)
@@ -202,6 +262,21 @@ export default function AdminPage() {
             <span className="ml-2 text-xs opacity-70">{approved.length}</span>
           </button>
           <button
+            onClick={() => setTab('anon')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+              tab === 'anon'
+                ? 'bg-teal-500 text-white'
+                : 'bg-stone-50 text-gray-500 border border-stone-200 hover:border-teal-300'
+            }`}
+          >
+            QR口コミ
+            {anonReviews.filter((r) => !r.is_approved).length > 0 && (
+              <span className="ml-2 bg-white text-teal-500 text-xs px-1.5 py-0.5 rounded-full font-bold">
+                {anonReviews.filter((r) => !r.is_approved).length}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setTab('salesperson')}
             className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
               tab === 'salesperson'
@@ -218,8 +293,79 @@ export default function AdminPage() {
           </button>
         </div>
 
-        {/* 口コミ一覧 */}
-        {tab !== 'salesperson' && (() => {
+        {/* QR口コミ一覧 */}
+        {tab === 'anon' && (() => {
+          const pendingAnon = anonReviews.filter((r) => !r.is_approved)
+          const approvedAnon = anonReviews.filter((r) => r.is_approved)
+          const renderAnonCard = (r: any, showApprove: boolean) => (
+            <div key={r.id} className="bg-stone-50 rounded-2xl border border-stone-200 p-6">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <p className="text-xs text-gray-400 mb-0.5">営業マン</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {agentMap[r.salesperson_id] ?? r.salesperson_id}
+                  </p>
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-xs bg-teal-100 text-teal-600 px-2 py-0.5 rounded-full font-medium">QR口コミ</span>
+                  <p className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString('ja-JP')}</p>
+                </div>
+              </div>
+              <div className="space-y-2 mb-4">
+                {r.rating && (
+                  <p className="text-sm text-amber-400">
+                    {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                  </p>
+                )}
+                <p className="text-sm text-gray-700 leading-relaxed">{r.content}</p>
+              </div>
+              <div className="flex gap-2">
+                {showApprove ? (
+                  <button
+                    onClick={() => handleAnonApprove(r.id)}
+                    disabled={anonApprovingId === r.id}
+                    className="flex-1 bg-green-500 hover:bg-green-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-2.5 rounded-xl transition text-sm"
+                  >
+                    {anonApprovingId === r.id ? '処理中...' : '公開する'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleAnonReject(r.id)}
+                    disabled={anonApprovingId === r.id}
+                    className="flex-1 bg-stone-200 hover:bg-stone-300 disabled:opacity-50 text-gray-500 font-bold py-2.5 rounded-xl transition text-sm"
+                  >
+                    {anonApprovingId === r.id ? '処理中...' : '非公開にする'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )
+          return (
+            <div className="space-y-6">
+              {pendingAnon.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-teal-600 mb-3">確認待ち（{pendingAnon.length}件）</p>
+                  <div className="space-y-4">{pendingAnon.map((r) => renderAnonCard(r, true))}</div>
+                </div>
+              )}
+              {approvedAnon.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-green-600 mb-3">公開中（{approvedAnon.length}件）</p>
+                  <div className="space-y-4">{approvedAnon.map((r) => renderAnonCard(r, false))}</div>
+                </div>
+              )}
+              {anonReviews.length === 0 && (
+                <div className="text-center py-20 text-gray-400">
+                  <p className="text-3xl mb-3">✓</p>
+                  <p className="text-sm">QR口コミはまだありません</p>
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {/* 成約口コミ一覧 */}
+        {tab !== 'salesperson' && tab !== 'anon' && (() => {
           const displayed = tab === 'pending' ? pending : approved
           return displayed.length === 0 ? (
             <div className="text-center py-20 text-gray-400">
@@ -327,6 +473,33 @@ export default function AdminPage() {
                 {a.experience_years && <p>🕐 経験 {a.experience_years}年</p>}
                 {a.bio && <p className="text-sm text-gray-700 leading-relaxed mt-2 line-clamp-3">{a.bio}</p>}
               </div>
+
+              {/* QRコード */}
+              {a.status === 'active' && qrTokenMap[a.id] && (
+                <div className="mb-4 p-4 bg-white rounded-xl border border-stone-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-xs font-medium text-gray-500">口コミ用QRコード</p>
+                    <button
+                      onClick={() => handleReissueQr(a.id)}
+                      disabled={qrReissuingId === a.id}
+                      className="text-xs text-red-400 hover:text-red-500 border border-red-200 px-2.5 py-1 rounded-lg transition disabled:opacity-50"
+                    >
+                      {qrReissuingId === a.id ? '再発行中...' : 'QR再発行'}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <QRCodeSVG
+                      value={`${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://eigyo-no-tsuchihyo.vercel.app'}/review/${qrTokenMap[a.id]}`}
+                      size={80}
+                      bgColor="#ffffff"
+                      fgColor="#1c1917"
+                    />
+                    <p className="text-xs text-gray-400 break-all">
+                      {`/review/${qrTokenMap[a.id]}`}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2 flex-wrap">
                 {a.status === 'active' && (

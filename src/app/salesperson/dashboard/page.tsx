@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
+import { QRCodeSVG } from 'qrcode.react'
 
 const SALES_STYLE_AXES = [
   { key: 'listening_proposing', left: '傾聴型', right: '提案型' },
@@ -14,6 +15,9 @@ export default function SalespersonDashboard() {
   const [profile, setProfile] = useState<any>(null)
   const [reviews, setReviews] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [qrToken, setQrToken] = useState<string>('')
+  const [qrReissuing, setQrReissuing] = useState(false)
+  const [qrCopied, setQrCopied] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -37,6 +41,7 @@ export default function SalespersonDashboard() {
       }
 
       setProfile(ownProfile)
+      setQrToken(ownProfile.qr_token ?? '')
 
       const { data: reviewData } = await supabase
         .from('contract_reviews')
@@ -50,6 +55,32 @@ export default function SalespersonDashboard() {
 
     load()
   }, [])
+
+  const handleReissueQr = async () => {
+    if (!profile || qrReissuing) return
+    if (!confirm('QRコードを再発行すると、以前のQRコードからの投稿ができなくなります。続けますか？')) return
+    setQrReissuing(true)
+    try {
+      const newToken = crypto.randomUUID()
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('salesperson_profiles')
+        .update({ qr_token: newToken })
+        .eq('id', profile.id)
+      if (!error) setQrToken(newToken)
+    } catch {
+      // silent
+    } finally {
+      setQrReissuing(false)
+    }
+  }
+
+  const handleCopyQrUrl = async () => {
+    const url = `${window.location.origin}/review/${qrToken}`
+    await navigator.clipboard.writeText(url)
+    setQrCopied(true)
+    setTimeout(() => setQrCopied(false), 2000)
+  }
 
   if (loading) return (
     <div className="min-h-screen bg-stone-100 flex items-center justify-center text-gray-400">
@@ -196,6 +227,46 @@ export default function SalespersonDashboard() {
             )}
           </div>
         </div>
+
+        {/* 口コミQRコード */}
+        {profile.status === 'active' && qrToken && (
+          <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm font-bold text-gray-700">口コミ用QRコード</p>
+                <p className="text-xs text-gray-400 mt-0.5">お客様に読み取ってもらうと、会員登録なしで口コミを投稿できます</p>
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-4">
+              <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+                <QRCodeSVG
+                  value={`${typeof window !== 'undefined' ? window.location.origin : 'https://eigyo-no-tsuchihyo.vercel.app'}/review/${qrToken}`}
+                  size={160}
+                  bgColor="#ffffff"
+                  fgColor="#1c1917"
+                />
+              </div>
+              <div className="flex gap-2 w-full">
+                <button
+                  onClick={handleCopyQrUrl}
+                  className="flex-1 text-sm border border-stone-300 text-gray-600 hover:bg-stone-100 font-medium py-2.5 rounded-xl transition"
+                >
+                  {qrCopied ? '✓ コピー済み' : 'URLをコピー'}
+                </button>
+                <button
+                  onClick={handleReissueQr}
+                  disabled={qrReissuing}
+                  className="flex-1 text-sm border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 font-medium py-2.5 rounded-xl transition"
+                >
+                  {qrReissuing ? '再発行中...' : 'QRを再発行'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-300 text-center">
+                再発行すると以前のQRコードは無効になります
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* 口コミ統計 */}
         <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
