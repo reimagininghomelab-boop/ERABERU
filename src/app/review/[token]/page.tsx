@@ -3,12 +3,15 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 
+const RATING_LABELS = ['', '不満', 'やや不満', '普通', '満足', 'とても満足']
+
 export default function AnonymousReviewPage() {
   const { token } = useParams()
   const [salesperson, setSalesperson] = useState<any>(null)
   const [notFound, setNotFound] = useState(false)
   const [loading, setLoading] = useState(true)
 
+  const [step, setStep] = useState<'form' | 'confirm'>('form')
   const [rating, setRating] = useState(0)
   const [content, setContent] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -36,7 +39,6 @@ export default function AnonymousReviewPage() {
   }, [token])
 
   const handleSubmit = async () => {
-    if (rating === 0 || !content.trim()) return
     setSubmitting(true)
     setError('')
     try {
@@ -48,11 +50,13 @@ export default function AnonymousReviewPage() {
       const json = await res.json()
       if (!res.ok) {
         setError(json.error ?? '投稿に失敗しました')
+        setStep('form')
       } else {
         setDone(true)
       }
     } catch {
       setError('通信エラーが発生しました')
+      setStep('form')
     } finally {
       setSubmitting(false)
     }
@@ -109,66 +113,131 @@ export default function AnonymousReviewPage() {
           </p>
         </div>
 
-        {/* フォーム */}
-        <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6 space-y-5">
-
-          {/* 評価 */}
-          <div>
-            <p className="text-xs text-gray-500 font-medium mb-2">
-              評価 <span className="text-red-400">*</span>
-            </p>
-            <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <button
-                  key={star}
-                  onClick={() => setRating(star)}
-                  className={`text-3xl transition-transform hover:scale-110 ${
-                    star <= rating ? 'text-amber-400' : 'text-gray-200'
-                  }`}
-                >
-                  ★
-                </button>
-              ))}
-            </div>
-            {rating > 0 && (
-              <p className="text-xs text-gray-400 mt-1">
-                {['', '不満', 'やや不満', '普通', '満足', 'とても満足'][rating]}
-              </p>
-            )}
+        {/* ステップインジケーター */}
+        <div className="flex items-center justify-center gap-2">
+          <div className={`flex items-center gap-1.5 text-xs font-medium ${step === 'form' ? 'text-orange-500' : 'text-gray-300'}`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${step === 'form' ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-400'}`}>1</span>
+            入力
           </div>
-
-          {/* コメント */}
-          <div>
-            <p className="text-xs text-gray-500 font-medium mb-2">
-              コメント <span className="text-red-400">*</span>
-            </p>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="この営業マンとの打ち合わせはいかがでしたか？率直なご意見をお聞かせください。"
-              rows={5}
-              className="w-full text-sm border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300"
-            />
-            <p className="text-xs text-gray-300 mt-1 text-right">{content.length} 文字</p>
+          <div className="w-8 h-px bg-stone-200" />
+          <div className={`flex items-center gap-1.5 text-xs font-medium ${step === 'confirm' ? 'text-orange-500' : 'text-gray-300'}`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${step === 'confirm' ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-400'}`}>2</span>
+            確認
           </div>
-
-          {error && (
-            <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3">{error}</p>
-          )}
-
-          <button
-            onClick={handleSubmit}
-            disabled={rating === 0 || !content.trim() || submitting}
-            className="w-full bg-orange-500 hover:bg-orange-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-4 rounded-xl transition text-sm"
-          >
-            {submitting ? '送信中...' : '口コミを投稿する'}
-          </button>
-
-          <p className="text-xs text-gray-300 text-center leading-relaxed">
-            投稿された口コミは管理者が確認してから公開されます。<br />
-            個人を特定できる情報は記載しないようにしてください。
-          </p>
         </div>
+
+        {/* 入力フォーム */}
+        {step === 'form' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6 space-y-5">
+
+            <div>
+              <p className="text-xs text-gray-500 font-medium mb-2">
+                評価 <span className="text-red-400">*</span>
+              </p>
+              <div className="flex gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    onClick={() => setRating(star)}
+                    className={`text-3xl transition-transform hover:scale-110 ${
+                      star <= rating ? 'text-amber-400' : 'text-gray-200'
+                    }`}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+              {rating > 0 && (
+                <p className="text-xs text-gray-400 mt-1">{RATING_LABELS[rating]}</p>
+              )}
+            </div>
+
+            <div>
+              <p className="text-xs text-gray-500 font-medium mb-2">
+                コメント <span className="text-red-400">*</span>
+              </p>
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="この営業マンとの打ち合わせはいかがでしたか？率直なご意見をお聞かせください。"
+                rows={5}
+                className="w-full text-sm border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300"
+              />
+              <p className="text-xs text-gray-300 mt-1 text-right">{content.length} 文字</p>
+            </div>
+
+            {error && (
+              <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3">{error}</p>
+            )}
+
+            <button
+              onClick={() => setStep('confirm')}
+              disabled={rating === 0 || !content.trim()}
+              className="w-full bg-orange-500 hover:bg-orange-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-4 rounded-xl transition text-sm"
+            >
+              入力内容を確認する
+            </button>
+
+            <p className="text-xs text-gray-300 text-center leading-relaxed">
+              投稿された口コミは管理者が確認してから公開されます。<br />
+              個人を特定できる情報は記載しないようにしてください。
+            </p>
+          </div>
+        )}
+
+        {/* 確認画面 */}
+        {step === 'confirm' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6 space-y-4">
+              <p className="text-sm font-bold text-gray-700">投稿内容の確認</p>
+
+              <div className="space-y-4 text-sm">
+                <div className="flex items-center justify-between py-3 border-b border-stone-100">
+                  <p className="text-xs text-gray-400 w-16 shrink-0">評価</p>
+                  <div className="text-right">
+                    <p className="text-amber-400 text-lg tracking-wide">
+                      {'★'.repeat(rating)}{'☆'.repeat(5 - rating)}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">{RATING_LABELS[rating]}</p>
+                  </div>
+                </div>
+
+                <div className="py-3">
+                  <p className="text-xs text-gray-400 mb-2">コメント</p>
+                  <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{content}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <p className="text-xs text-amber-700 leading-relaxed">
+                投稿後の編集・削除はできません。内容をご確認のうえ送信してください。
+              </p>
+            </div>
+
+            {error && (
+              <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3">{error}</p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setStep('form'); setError('') }}
+                disabled={submitting}
+                className="flex-1 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 text-gray-600 font-bold py-4 rounded-xl transition text-sm"
+              >
+                修正する
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="flex-1 bg-orange-500 hover:bg-orange-400 disabled:bg-orange-300 text-white font-bold py-4 rounded-xl transition text-sm"
+              >
+                {submitting ? '送信中...' : '投稿する'}
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </main>
   )
