@@ -43,7 +43,7 @@ export default function AdminPage() {
           .select('id, company_name'),
         supabase
           .from('salesperson_profiles')
-          .select('id, real_name, company_name, area_prefecture, experience_years, bio, status, ai_summary, qr_token, created_at')
+          .select('id, real_name, family_name, given_name, company_name, area_prefecture, experience_years, bio, status, ai_summary, qr_token, created_at')
           .order('created_at', { ascending: false }),
         supabase
           .from('anonymous_reviews')
@@ -60,8 +60,16 @@ export default function AdminPage() {
       if (appData) {
         setApplications(appData)
         const tokenMap: Record<string, string> = {}
-        appData.forEach((a) => { if (a.qr_token) tokenMap[a.id] = a.qr_token })
+        const nameMap: Record<string, string> = {}
+        appData.forEach((a) => {
+          if (a.qr_token) tokenMap[a.id] = a.qr_token
+          const name = (a.family_name && a.given_name)
+            ? `${a.family_name} ${a.given_name}`
+            : (a.real_name ?? '')
+          nameMap[a.id] = name ? `${name}（${a.company_name}）` : a.company_name
+        })
         setQrTokenMap(tokenMap)
+        setAgentMap((prev) => ({ ...prev, ...nameMap }))
       }
       if (anonData) setAnonReviews(anonData)
       setLoading(false)
@@ -216,7 +224,7 @@ export default function AdminPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-stone-100 flex items-center justify-center text-gray-400">
+    <div className="min-h-screen bg-stone-100 flex items-center justify-center text-gray-600">
       読み込み中...
     </div>
   )
@@ -240,7 +248,7 @@ export default function AdminPage() {
             className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
               tab === 'pending'
                 ? 'bg-orange-500 text-white'
-                : 'bg-stone-50 text-gray-500 border border-stone-200 hover:border-orange-300'
+                : 'bg-stone-50 text-gray-700 border border-stone-200 hover:border-orange-300'
             }`}
           >
             口コミ（非公開）
@@ -255,7 +263,7 @@ export default function AdminPage() {
             className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
               tab === 'approved'
                 ? 'bg-green-500 text-white'
-                : 'bg-stone-50 text-gray-500 border border-stone-200 hover:border-green-300'
+                : 'bg-stone-50 text-gray-700 border border-stone-200 hover:border-green-300'
             }`}
           >
             口コミ（公開中）
@@ -266,7 +274,7 @@ export default function AdminPage() {
             className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
               tab === 'anon'
                 ? 'bg-teal-500 text-white'
-                : 'bg-stone-50 text-gray-500 border border-stone-200 hover:border-teal-300'
+                : 'bg-stone-50 text-gray-700 border border-stone-200 hover:border-teal-300'
             }`}
           >
             QR口コミ
@@ -281,7 +289,7 @@ export default function AdminPage() {
             className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
               tab === 'salesperson'
                 ? 'bg-blue-500 text-white'
-                : 'bg-stone-50 text-gray-500 border border-stone-200 hover:border-blue-300'
+                : 'bg-stone-50 text-gray-700 border border-stone-200 hover:border-blue-300'
             }`}
           >
             営業マン申請
@@ -301,14 +309,14 @@ export default function AdminPage() {
             <div key={r.id} className="bg-stone-50 rounded-2xl border border-stone-200 p-6">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <p className="text-xs text-gray-400 mb-0.5">営業マン</p>
+                  <p className="text-xs text-gray-600 mb-0.5">営業マン</p>
                   <p className="text-sm font-semibold text-gray-800">
                     {agentMap[r.salesperson_id] ?? r.salesperson_id}
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span className="text-xs bg-teal-100 text-teal-600 px-2 py-0.5 rounded-full font-medium">QR口コミ</span>
-                  <p className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString('ja-JP')}</p>
+                  <p className="text-xs text-gray-600">{new Date(r.created_at).toLocaleDateString('ja-JP')}</p>
                 </div>
               </div>
               <div className="space-y-2 mb-4">
@@ -324,7 +332,7 @@ export default function AdminPage() {
                   <button
                     onClick={() => handleAnonApprove(r.id)}
                     disabled={anonApprovingId === r.id}
-                    className="flex-1 bg-green-500 hover:bg-green-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-2.5 rounded-xl transition text-sm"
+                    className="flex-1 bg-green-500 hover:bg-green-400 disabled:bg-gray-200 disabled:text-gray-500 text-white font-bold py-2.5 rounded-xl transition text-sm"
                   >
                     {anonApprovingId === r.id ? '処理中...' : '公開する'}
                   </button>
@@ -332,7 +340,7 @@ export default function AdminPage() {
                   <button
                     onClick={() => handleAnonReject(r.id)}
                     disabled={anonApprovingId === r.id}
-                    className="flex-1 bg-stone-200 hover:bg-stone-300 disabled:opacity-50 text-gray-500 font-bold py-2.5 rounded-xl transition text-sm"
+                    className="flex-1 bg-stone-200 hover:bg-stone-300 disabled:opacity-50 text-gray-700 font-bold py-2.5 rounded-xl transition text-sm"
                   >
                     {anonApprovingId === r.id ? '処理中...' : '非公開にする'}
                   </button>
@@ -355,7 +363,7 @@ export default function AdminPage() {
                 </div>
               )}
               {anonReviews.length === 0 && (
-                <div className="text-center py-20 text-gray-400">
+                <div className="text-center py-20 text-gray-600">
                   <p className="text-3xl mb-3">✓</p>
                   <p className="text-sm">QR口コミはまだありません</p>
                 </div>
@@ -368,7 +376,7 @@ export default function AdminPage() {
         {tab !== 'salesperson' && tab !== 'anon' && (() => {
           const displayed = tab === 'pending' ? pending : approved
           return displayed.length === 0 ? (
-            <div className="text-center py-20 text-gray-400">
+            <div className="text-center py-20 text-gray-600">
               <p className="text-3xl mb-3">✓</p>
               <p className="text-sm">{tab === 'pending' ? '非公開の口コミはありません' : '公開中の口コミはありません'}</p>
             </div>
@@ -378,12 +386,12 @@ export default function AdminPage() {
                 <div key={r.id} className="bg-stone-50 rounded-2xl border border-stone-200 p-6">
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <p className="text-xs text-gray-400 mb-0.5">営業マン</p>
+                      <p className="text-xs text-gray-600 mb-0.5">営業マン</p>
                       <p className="text-sm font-semibold text-gray-800">
                         {agentMap[r.salesperson_id] ?? r.salesperson_id}
                       </p>
                     </div>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-600">
                       {new Date(r.created_at).toLocaleDateString('ja-JP')}
                     </p>
                   </div>
@@ -395,10 +403,10 @@ export default function AdminPage() {
                       </p>
                     )}
                     {r.meeting_status && (
-                      <p className="text-xs text-gray-500">📋 {r.meeting_status}</p>
+                      <p className="text-xs text-gray-700">📋 {r.meeting_status}</p>
                     )}
                     {r.contract_price && (
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-700">
                         成約価格: {(r.contract_price / 10000).toLocaleString()}万円
                       </p>
                     )}
@@ -410,7 +418,7 @@ export default function AdminPage() {
                       <button
                         onClick={() => handleApprove(r.id)}
                         disabled={approvingId === r.id}
-                        className="flex-1 bg-green-500 hover:bg-green-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-2.5 rounded-xl transition text-sm"
+                        className="flex-1 bg-green-500 hover:bg-green-400 disabled:bg-gray-200 disabled:text-gray-500 text-white font-bold py-2.5 rounded-xl transition text-sm"
                       >
                         {approvingId === r.id ? '処理中...' : '公開する'}
                       </button>
@@ -418,7 +426,7 @@ export default function AdminPage() {
                       <button
                         onClick={() => handleReject(r.id)}
                         disabled={approvingId === r.id}
-                        className="flex-1 bg-stone-200 hover:bg-stone-300 disabled:opacity-50 text-gray-500 font-bold py-2.5 rounded-xl transition text-sm"
+                        className="flex-1 bg-stone-200 hover:bg-stone-300 disabled:opacity-50 text-gray-700 font-bold py-2.5 rounded-xl transition text-sm"
                       >
                         {approvingId === r.id ? '処理中...' : '非公開にする'}
                       </button>
@@ -445,12 +453,12 @@ export default function AdminPage() {
             retired: '退会',
           }
           const statusColor: Record<string, string> = {
-            pending: 'bg-gray-100 text-gray-500',
+            pending: 'bg-gray-100 text-gray-700',
             active: 'bg-green-100 text-green-600',
-            suspended: 'bg-gray-100 text-gray-500',
+            suspended: 'bg-gray-100 text-gray-700',
             rejected: 'bg-red-100 text-red-500',
             banned: 'bg-red-200 text-red-700',
-            retired: 'bg-stone-100 text-stone-400',
+            retired: 'bg-stone-100 text-stone-600',
           }
 
           const renderCard = (a: any) => (
@@ -458,17 +466,17 @@ export default function AdminPage() {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <p className="text-sm font-semibold text-gray-800">{a.real_name}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{a.company_name}</p>
+                  <p className="text-xs text-gray-700 mt-0.5">{a.company_name}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[a.status] ?? 'bg-stone-100 text-stone-400'}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[a.status] ?? 'bg-stone-100 text-stone-600'}`}>
                     {statusLabel[a.status] ?? a.status}
                   </span>
-                  <p className="text-xs text-gray-400">{new Date(a.created_at).toLocaleDateString('ja-JP')}</p>
+                  <p className="text-xs text-gray-600">{new Date(a.created_at).toLocaleDateString('ja-JP')}</p>
                 </div>
               </div>
 
-              <div className="space-y-1 mb-4 text-xs text-gray-500">
+              <div className="space-y-1 mb-4 text-xs text-gray-700">
                 {a.area_prefecture && <p>📍 {a.area_prefecture}</p>}
                 {a.experience_years && <p>🕐 経験 {a.experience_years}年</p>}
                 {a.bio && <p className="text-sm text-gray-700 leading-relaxed mt-2 line-clamp-3">{a.bio}</p>}
@@ -478,7 +486,7 @@ export default function AdminPage() {
               {a.status === 'active' && qrTokenMap[a.id] && (
                 <div className="mb-4 p-4 bg-white rounded-xl border border-stone-200">
                   <div className="flex items-center justify-between mb-3">
-                    <p className="text-xs font-medium text-gray-500">口コミ用QRコード</p>
+                    <p className="text-xs font-medium text-gray-700">口コミ用QRコード</p>
                     <button
                       onClick={() => handleReissueQr(a.id)}
                       disabled={qrReissuingId === a.id}
@@ -494,7 +502,7 @@ export default function AdminPage() {
                       bgColor="#ffffff"
                       fgColor="#1c1917"
                     />
-                    <p className="text-xs text-gray-400 break-all">
+                    <p className="text-xs text-gray-600 break-all">
                       {`/review/${qrTokenMap[a.id]}`}
                     </p>
                   </div>
@@ -506,7 +514,7 @@ export default function AdminPage() {
                   <button
                     onClick={() => handleMakePrivate(a.id)}
                     disabled={processingAppId === a.id}
-                    className="flex-1 bg-stone-200 hover:bg-gray-300 disabled:opacity-50 text-gray-500 font-bold py-2.5 rounded-xl transition text-sm"
+                    className="flex-1 bg-stone-200 hover:bg-gray-300 disabled:opacity-50 text-gray-700 font-bold py-2.5 rounded-xl transition text-sm"
                   >
                     {processingAppId === a.id ? '処理中...' : '非公開にする'}
                   </button>
@@ -515,7 +523,7 @@ export default function AdminPage() {
                   <button
                     onClick={() => handleApproveApplication(a.id)}
                     disabled={processingAppId === a.id}
-                    className="flex-1 bg-blue-500 hover:bg-blue-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-2.5 rounded-xl transition text-sm"
+                    className="flex-1 bg-blue-500 hover:bg-blue-400 disabled:bg-gray-200 disabled:text-gray-500 text-white font-bold py-2.5 rounded-xl transition text-sm"
                   >
                     {processingAppId === a.id ? '処理中...' : '再公開'}
                   </button>
@@ -523,7 +531,7 @@ export default function AdminPage() {
                 <button
                   onClick={() => handleGenerateAiIntro(a.id)}
                   disabled={aiGeneratingId === a.id}
-                  className="flex-1 bg-purple-500 hover:bg-purple-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-2.5 rounded-xl transition text-sm"
+                  className="flex-1 bg-purple-500 hover:bg-purple-400 disabled:bg-gray-200 disabled:text-gray-500 text-white font-bold py-2.5 rounded-xl transition text-sm"
                 >
                   {aiGeneratingId === a.id ? 'AI生成中...' : a.ai_summary ? '✨ AI紹介文を再生成' : '✨ AI紹介文を生成'}
                 </button>
@@ -542,19 +550,19 @@ export default function AdminPage() {
                       AI紹介文{isNew ? '（生成完了）' : '（保存済み）'}
                     </p>
                     <div>
-                      <p className="font-medium text-gray-400 mb-1">この営業マンの雰囲気</p>
+                      <p className="font-medium text-gray-700 mb-1">この営業マンの雰囲気</p>
                       <p className="text-gray-700 leading-relaxed">{r.summary}</p>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-400 mb-1">相性がよさそうな方</p>
+                      <p className="font-medium text-gray-700 mb-1">相性がよさそうな方</p>
                       <p className="text-gray-600">{r.goodMatch.join('、')}</p>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-400 mb-1">会話スタイル</p>
+                      <p className="font-medium text-gray-700 mb-1">会話スタイル</p>
                       <p className="text-gray-600">{r.communicationStyle}</p>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-400 mb-1">得意なサポート</p>
+                      <p className="font-medium text-gray-700 mb-1">得意なサポート</p>
                       <p className="text-gray-600">{r.strengths.join('、')}</p>
                     </div>
                   </div>
@@ -573,18 +581,18 @@ export default function AdminPage() {
               )}
               {privateApps.length > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-gray-500 mb-3">非公開（{privateApps.length}件）</p>
+                  <p className="text-xs font-bold text-gray-700 mb-3">非公開（{privateApps.length}件）</p>
                   <div className="space-y-4">{privateApps.map(renderCard)}</div>
                 </div>
               )}
               {otherApps.length > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-gray-400 mb-3">その他（{otherApps.length}件）</p>
+                  <p className="text-xs font-bold text-gray-600 mb-3">その他（{otherApps.length}件）</p>
                   <div className="space-y-4">{otherApps.map(renderCard)}</div>
                 </div>
               )}
               {applications.length === 0 && (
-                <div className="text-center py-20 text-gray-400">
+                <div className="text-center py-20 text-gray-600">
                   <p className="text-3xl mb-3">✓</p>
                   <p className="text-sm">営業マンの登録はありません</p>
                 </div>
