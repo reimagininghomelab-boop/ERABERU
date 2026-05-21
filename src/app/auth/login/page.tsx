@@ -1,17 +1,42 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter()
-  const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login')
+  const searchParams = useSearchParams()
+  const fromQr = searchParams.get('from') === 'qr'
+  const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'login'
+
+  const [mode, setMode] = useState<'login' | 'signup' | 'reset'>(initialMode)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [qrLinked, setQrLinked] = useState(false)
+
+  // QR経由ログイン後: 口コミ紐づけ＋本サイトリンク表示
+  useEffect(() => {
+    if (!fromQr) return
+    const supabase = createClient()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if ((event === 'SIGNED_IN') && session?.access_token) {
+        try {
+          await fetch('/api/review/link-to-user', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          })
+        } catch {
+          // 紐づけ失敗してもログイン自体は成功扱い
+        }
+        setQrLinked(true)
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [fromQr])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,9 +50,10 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) {
         setError(error.message)
-      } else {
+      } else if (!fromQr) {
         router.push('/')
       }
+      // fromQr の場合は onAuthStateChange が SIGNED_IN を拾って qrLinked = true にする
     } else if (mode === 'signup') {
       const { error } = await supabase.auth.signUp({ email, password })
       if (error) {
@@ -49,6 +75,32 @@ export default function LoginPage() {
     setLoading(false)
   }
 
+  // QR経由でログイン成功後: 紐づけ完了 → 本サイトリンクを表示
+  if (fromQr && qrLinked) {
+    return (
+      <main className="min-h-screen bg-stone-100 flex flex-col items-center justify-center gap-6 px-6">
+        <div className="text-center space-y-2">
+          <span className="text-5xl block mb-2">🎉</span>
+          <p className="text-lg font-bold text-gray-700">ログイン完了！</p>
+          <p className="text-sm text-gray-400">
+            口コミがアカウントに紐づけられました。
+          </p>
+        </div>
+        <div className="w-full max-w-sm bg-white rounded-2xl border border-stone-200 p-6 space-y-4">
+          <p className="text-sm text-gray-600 leading-relaxed">
+            ERABERUでは口コミをもとに住宅営業マンを比較・検索できます。
+          </p>
+          <a
+            href="/"
+            className="block w-full bg-orange-500 hover:bg-orange-400 text-white font-bold py-3 rounded-xl transition text-sm text-center"
+          >
+            ERABERUで営業マンを探す
+          </a>
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-stone-100">
       {/* ヘッダー */}
@@ -60,6 +112,14 @@ export default function LoginPage() {
       </header>
 
       <div className="max-w-sm mx-auto px-6 py-16">
+        {fromQr && (
+          <div className="mb-6 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+            <p className="text-xs text-orange-700 leading-relaxed">
+              ERABERUに登録・ログインすると、投稿した口コミがアカウントに紐づけられます。
+            </p>
+          </div>
+        )}
+
         <h2 className="text-2xl font-bold text-gray-800 mb-2">
           {mode === 'login' ? 'ログイン' : mode === 'signup' ? 'アカウント作成' : 'パスワードをお忘れですか？'}
         </h2>
@@ -127,5 +187,13 @@ export default function LoginPage() {
         </button>
       </div>
     </main>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   )
 }

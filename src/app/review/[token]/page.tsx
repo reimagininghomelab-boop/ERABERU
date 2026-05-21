@@ -23,7 +23,7 @@ export default function AnonymousReviewPage() {
       const supabase = createClient()
       const { data } = await supabase
         .from('salesperson_profiles')
-        .select('id, company_name, department, qr_token, status')
+        .select('id, family_name, given_name, real_name, company_name, department, qr_token, status')
         .eq('qr_token', token)
         .eq('status', 'active')
         .maybeSingle()
@@ -83,14 +83,41 @@ export default function AnonymousReviewPage() {
     )
   }
 
+  const displayName = salesperson.family_name && salesperson.given_name
+    ? `${salesperson.family_name} ${salesperson.given_name}`
+    : salesperson.real_name
+
   if (done) {
     return (
-      <div className="min-h-screen bg-stone-100 flex flex-col items-center justify-center gap-4 px-6">
-        <span className="text-5xl">✅</span>
-        <p className="text-lg font-bold text-gray-700">口コミを受け付けました</p>
-        <p className="text-sm text-gray-400 text-center">
-          確認後に公開されます。ご協力ありがとうございました。
-        </p>
+      <div className="min-h-screen bg-stone-100 flex flex-col items-center justify-center gap-6 px-6">
+        <div className="text-center space-y-2">
+          <span className="text-5xl block mb-2">✅</span>
+          <p className="text-lg font-bold text-gray-700">口コミを受け付けました</p>
+          <p className="text-sm text-gray-400">
+            確認後に公開されます。ご協力ありがとうございました。
+          </p>
+        </div>
+
+        <div className="w-full max-w-sm bg-white rounded-2xl border border-stone-200 p-6 space-y-4">
+          <div>
+            <p className="text-sm font-bold text-gray-700 mb-1">ERABERUに会員登録する</p>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              住宅営業マンを口コミで選べるサービスです。登録・利用は無料です。
+            </p>
+          </div>
+          <a
+            href={`/auth/login?from=qr&mode=signup`}
+            className="block w-full bg-orange-500 hover:bg-orange-400 text-white font-bold py-3 rounded-xl transition text-sm text-center"
+          >
+            無料で会員登録する
+          </a>
+          <a
+            href={`/auth/login?from=qr`}
+            className="block w-full text-center text-xs text-gray-400 hover:text-gray-600 transition"
+          >
+            すでにアカウントをお持ちの方はログイン
+          </a>
+        </div>
       </div>
     )
   }
@@ -104,10 +131,10 @@ export default function AnonymousReviewPage() {
           <div className="inline-block bg-orange-100 text-orange-600 text-xs font-bold px-3 py-1 rounded-full mb-2">
             口コミ投稿
           </div>
-          <p className="text-xl font-bold text-gray-800">{salesperson.company_name}</p>
-          {salesperson.department && (
-            <p className="text-sm text-gray-500">{salesperson.department}</p>
-          )}
+          <p className="text-xl font-bold text-gray-800">{displayName}</p>
+          <p className="text-sm text-gray-500">{salesperson.company_name}
+            {salesperson.department && `・${salesperson.department}`}
+          </p>
           <p className="text-xs text-gray-400 pt-1">
             会員登録なしで投稿できます。内容確認後に公開されます。
           </p>
@@ -159,7 +186,7 @@ export default function AnonymousReviewPage() {
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder="この営業マンとの打ち合わせはいかがでしたか？率直なご意見をお聞かせください。"
+                placeholder={`${displayName}さんとの打ち合わせはいかがでしたか？率直なご意見をお聞かせください。`}
                 rows={5}
                 className="w-full text-sm border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300"
               />
