@@ -13,7 +13,7 @@ export default function AdminPage() {
   const [reviews, setReviews] = useState<any[]>([])
   const [agentMap, setAgentMap] = useState<Record<string, string>>({})
   const [approvingId, setApprovingId] = useState<string | null>(null)
-  const [tab, setTab] = useState<'pending' | 'approved' | 'anon' | 'salesperson' | 'suspended'>('pending')
+  const [tab, setTab] = useState<'pending' | 'approved' | 'salesperson'>('pending')
   const [applications, setApplications] = useState<any[]>([])
   const [processingAppId, setProcessingAppId] = useState<string | null>(null)
   const [aiGeneratingId, setAiGeneratingId] = useState<string | null>(null)
@@ -229,8 +229,13 @@ export default function AdminPage() {
     </div>
   )
 
-  const pending = reviews.filter((r) => !r.is_approved)
-  const approved = reviews.filter((r) => r.is_approved)
+  const allReviews = [
+    ...reviews.map((r) => ({ ...r, _type: 'contract' as const })),
+    ...anonReviews.map((r) => ({ ...r, _type: 'qr' as const })),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+  const pending = allReviews.filter((r) => !r.is_approved)
+  const approved = allReviews.filter((r) => r.is_approved)
 
   return (
     <main className="min-h-screen bg-stone-100">
@@ -270,21 +275,6 @@ export default function AdminPage() {
             <span className="ml-2 text-xs opacity-70">{approved.length}</span>
           </button>
           <button
-            onClick={() => setTab('anon')}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
-              tab === 'anon'
-                ? 'bg-teal-500 text-white'
-                : 'bg-stone-50 text-gray-700 border border-stone-200 hover:border-teal-300'
-            }`}
-          >
-            QR口コミ
-            {anonReviews.filter((r) => !r.is_approved).length > 0 && (
-              <span className="ml-2 bg-white text-teal-500 text-xs px-1.5 py-0.5 rounded-full font-bold">
-                {anonReviews.filter((r) => !r.is_approved).length}
-              </span>
-            )}
-          </button>
-          <button
             onClick={() => setTab('salesperson')}
             className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
               tab === 'salesperson'
@@ -301,80 +291,20 @@ export default function AdminPage() {
           </button>
         </div>
 
-        {/* QR口コミ一覧 */}
-        {tab === 'anon' && (() => {
-          const pendingAnon = anonReviews.filter((r) => !r.is_approved)
-          const approvedAnon = anonReviews.filter((r) => r.is_approved)
-          const renderAnonCard = (r: any, showApprove: boolean) => (
-            <div key={r.id} className="bg-stone-50 rounded-2xl border border-stone-200 p-6">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <p className="text-xs text-gray-600 mb-0.5">営業マン</p>
-                  <p className="text-sm font-semibold text-gray-800">
-                    {agentMap[r.salesperson_id] ?? r.salesperson_id}
-                  </p>
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className="text-xs bg-teal-100 text-teal-600 px-2 py-0.5 rounded-full font-medium">QR口コミ</span>
-                  <p className="text-xs text-gray-600">{new Date(r.created_at).toLocaleDateString('ja-JP')}</p>
-                </div>
-              </div>
-              <div className="space-y-2 mb-4">
-                {r.rating && (
-                  <p className="text-sm text-amber-400">
-                    {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
-                  </p>
-                )}
-                <p className="text-sm text-gray-700 leading-relaxed">{r.content}</p>
-              </div>
-              <div className="flex gap-2">
-                {showApprove ? (
-                  <button
-                    onClick={() => handleAnonApprove(r.id)}
-                    disabled={anonApprovingId === r.id}
-                    className="flex-1 bg-green-500 hover:bg-green-400 disabled:bg-gray-200 disabled:text-gray-500 text-white font-bold py-2.5 rounded-xl transition text-sm"
-                  >
-                    {anonApprovingId === r.id ? '処理中...' : '公開する'}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleAnonReject(r.id)}
-                    disabled={anonApprovingId === r.id}
-                    className="flex-1 bg-stone-200 hover:bg-stone-300 disabled:opacity-50 text-gray-700 font-bold py-2.5 rounded-xl transition text-sm"
-                  >
-                    {anonApprovingId === r.id ? '処理中...' : '非公開にする'}
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-          return (
-            <div className="space-y-6">
-              {pendingAnon.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-teal-600 mb-3">確認待ち（{pendingAnon.length}件）</p>
-                  <div className="space-y-4">{pendingAnon.map((r) => renderAnonCard(r, true))}</div>
-                </div>
-              )}
-              {approvedAnon.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-green-600 mb-3">公開中（{approvedAnon.length}件）</p>
-                  <div className="space-y-4">{approvedAnon.map((r) => renderAnonCard(r, false))}</div>
-                </div>
-              )}
-              {anonReviews.length === 0 && (
-                <div className="text-center py-20 text-gray-600">
-                  <p className="text-3xl mb-3">✓</p>
-                  <p className="text-sm">QR口コミはまだありません</p>
-                </div>
-              )}
-            </div>
-          )
-        })()}
-
-        {/* 成約口コミ一覧 */}
-        {tab !== 'salesperson' && tab !== 'anon' && (() => {
+        {/* 口コミ一覧（成約 + QR統合） */}
+        {tab !== 'salesperson' && (() => {
           const displayed = tab === 'pending' ? pending : approved
+          const isProcessing = (r: any) =>
+            r._type === 'qr' ? anonApprovingId === r.id : approvingId === r.id
+
+          const handleToggle = (r: any) => {
+            if (r._type === 'qr') {
+              r.is_approved ? handleAnonReject(r.id) : handleAnonApprove(r.id)
+            } else {
+              r.is_approved ? handleReject(r.id) : handleApprove(r.id)
+            }
+          }
+
           return displayed.length === 0 ? (
             <div className="text-center py-20 text-gray-600">
               <p className="text-3xl mb-3">✓</p>
@@ -383,7 +313,7 @@ export default function AdminPage() {
           ) : (
             <div className="space-y-4">
               {displayed.map((r) => (
-                <div key={r.id} className="bg-stone-50 rounded-2xl border border-stone-200 p-6">
+                <div key={`${r._type}-${r.id}`} className="bg-stone-50 rounded-2xl border border-stone-200 p-6">
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <p className="text-xs text-gray-600 mb-0.5">営業マン</p>
@@ -391,9 +321,14 @@ export default function AdminPage() {
                         {agentMap[r.salesperson_id] ?? r.salesperson_id}
                       </p>
                     </div>
-                    <p className="text-xs text-gray-600">
-                      {new Date(r.created_at).toLocaleDateString('ja-JP')}
-                    </p>
+                    <div className="flex flex-col items-end gap-1">
+                      {r._type === 'qr' && (
+                        <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-medium">QR</span>
+                      )}
+                      <p className="text-xs text-gray-600">
+                        {new Date(r.created_at).toLocaleDateString('ja-JP')}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="space-y-2 mb-4">
@@ -416,19 +351,19 @@ export default function AdminPage() {
                   <div className="flex gap-2">
                     {!r.is_approved ? (
                       <button
-                        onClick={() => handleApprove(r.id)}
-                        disabled={approvingId === r.id}
+                        onClick={() => handleToggle(r)}
+                        disabled={isProcessing(r)}
                         className="flex-1 bg-green-500 hover:bg-green-400 disabled:bg-gray-200 disabled:text-gray-500 text-white font-bold py-2.5 rounded-xl transition text-sm"
                       >
-                        {approvingId === r.id ? '処理中...' : '公開する'}
+                        {isProcessing(r) ? '処理中...' : '公開する'}
                       </button>
                     ) : (
                       <button
-                        onClick={() => handleReject(r.id)}
-                        disabled={approvingId === r.id}
+                        onClick={() => handleToggle(r)}
+                        disabled={isProcessing(r)}
                         className="flex-1 bg-stone-200 hover:bg-stone-300 disabled:opacity-50 text-gray-700 font-bold py-2.5 rounded-xl transition text-sm"
                       >
-                        {approvingId === r.id ? '処理中...' : '非公開にする'}
+                        {isProcessing(r) ? '処理中...' : '非公開にする'}
                       </button>
                     )}
                   </div>
