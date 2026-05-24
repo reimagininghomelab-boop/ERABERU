@@ -32,6 +32,7 @@ export default function SalespersonDetail() {
   const [submitError, setSubmitError] = useState('')
   const [isFavorited, setIsFavorited] = useState(false)
   const [favoriteLoading, setFavoriteLoading] = useState(false)
+  const [preContractReviews, setPreContractReviews] = useState<any[]>([])
 
   const fetchReviews = async (supabase: ReturnType<typeof createClient>, currentUserId: string) => {
     const { data } = await supabase
@@ -89,6 +90,16 @@ export default function SalespersonDetail() {
         if (full) {
           setUnlockedData(full)
           await fetchReviews(supabase, user.id)
+
+          const { data: preReviews } = await supabase
+            .from('anonymous_reviews')
+            .select('id, rating, content, phase, source, created_at')
+            .eq('salesperson_id', id)
+            .eq('phase', 'pre_contract')
+            .eq('status', 'visible')
+            .order('created_at', { ascending: false })
+            .limit(5)
+          if (preReviews) setPreContractReviews(preReviews)
         }
 
         const { data: fav } = await supabase
@@ -398,6 +409,39 @@ export default function SalespersonDetail() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* 契約前の口コミ */}
+          <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
+            <div className="mb-4">
+              <p className="text-sm font-bold text-gray-700">契約前の口コミ</p>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                契約前の面談・提案・相談時点での印象です。直近5件のみ表示しています。
+              </p>
+            </div>
+            {preContractReviews.length === 0 ? (
+              <p className="text-sm text-gray-400">まだ契約前の口コミはありません</p>
+            ) : (
+              <div className="space-y-4">
+                {preContractReviews.map((r) => (
+                  <div key={r.id} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <span className="text-xs bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full">契約前</span>
+                      <span className="text-xs bg-teal-50 text-teal-600 px-2 py-0.5 rounded-full">QR投稿</span>
+                      {r.rating && (
+                        <span className="text-xs text-amber-400 ml-auto">
+                          {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-700 leading-relaxed">{r.content}</p>
+                    <p className="text-xs text-gray-400 mt-1.5">
+                      {new Date(r.created_at).toLocaleDateString('ja-JP')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 口コミ一覧 */}

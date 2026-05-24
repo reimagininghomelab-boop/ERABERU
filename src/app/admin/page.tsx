@@ -47,7 +47,7 @@ export default function AdminPage() {
           .order('created_at', { ascending: false }),
         supabase
           .from('anonymous_reviews')
-          .select('id, salesperson_id, rating, content, is_approved, created_at')
+          .select('id, salesperson_id, rating, content, phase, source, status, is_approved, created_at')
           .order('created_at', { ascending: false }),
       ])
 
@@ -164,28 +164,28 @@ export default function AdminPage() {
     setAiGeneratingId(null)
   }
 
-  const handleAnonApprove = async (reviewId: string) => {
+  const handleAnonShow = async (reviewId: string) => {
     setAnonApprovingId(reviewId)
     const supabase = createClient()
     const { error } = await supabase
       .from('anonymous_reviews')
-      .update({ is_approved: true })
+      .update({ status: 'visible' })
       .eq('id', reviewId)
     if (!error) {
-      setAnonReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, is_approved: true } : r))
+      setAnonReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, status: 'visible', is_approved: true } : r))
     }
     setAnonApprovingId(null)
   }
 
-  const handleAnonReject = async (reviewId: string) => {
+  const handleAnonHide = async (reviewId: string) => {
     setAnonApprovingId(reviewId)
     const supabase = createClient()
     const { error } = await supabase
       .from('anonymous_reviews')
-      .update({ is_approved: false })
+      .update({ status: 'hidden' })
       .eq('id', reviewId)
     if (!error) {
-      setAnonReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, is_approved: false } : r))
+      setAnonReviews((prev) => prev.map((r) => r.id === reviewId ? { ...r, status: 'hidden', is_approved: false } : r))
     }
     setAnonApprovingId(null)
   }
@@ -234,8 +234,9 @@ export default function AdminPage() {
     ...anonReviews.map((r) => ({ ...r, _type: 'qr' as const })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-  const pending = allReviews.filter((r) => !r.is_approved)
-  const approved = allReviews.filter((r) => r.is_approved)
+  const isVisible = (r: any) => r._type === 'qr' ? r.status !== 'hidden' : r.is_approved
+  const pending = allReviews.filter((r) => !isVisible(r))
+  const approved = allReviews.filter((r) => isVisible(r))
 
   return (
     <main className="min-h-screen bg-stone-100">
@@ -299,7 +300,7 @@ export default function AdminPage() {
 
           const handleToggle = (r: any) => {
             if (r._type === 'qr') {
-              r.is_approved ? handleAnonReject(r.id) : handleAnonApprove(r.id)
+              r.status === 'hidden' ? handleAnonShow(r.id) : handleAnonHide(r.id)
             } else {
               r.is_approved ? handleReject(r.id) : handleApprove(r.id)
             }
@@ -349,13 +350,13 @@ export default function AdminPage() {
                   </div>
 
                   <div className="flex gap-2">
-                    {!r.is_approved ? (
+                    {(r._type === 'qr' ? r.status === 'hidden' : !r.is_approved) ? (
                       <button
                         onClick={() => handleToggle(r)}
                         disabled={isProcessing(r)}
                         className="flex-1 bg-green-500 hover:bg-green-400 disabled:bg-gray-200 disabled:text-gray-500 text-white font-bold py-2.5 rounded-xl transition text-sm"
                       >
-                        {isProcessing(r) ? '処理中...' : '公開する'}
+                        {isProcessing(r) ? '処理中...' : '表示する'}
                       </button>
                     ) : (
                       <button
@@ -363,7 +364,7 @@ export default function AdminPage() {
                         disabled={isProcessing(r)}
                         className="flex-1 bg-stone-200 hover:bg-stone-300 disabled:opacity-50 text-gray-700 font-bold py-2.5 rounded-xl transition text-sm"
                       >
-                        {isProcessing(r) ? '処理中...' : '非公開にする'}
+                        {isProcessing(r) ? '処理中...' : r._type === 'qr' ? '非表示にする' : '非公開にする'}
                       </button>
                     )}
                   </div>
