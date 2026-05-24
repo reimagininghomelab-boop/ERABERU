@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
 import type { User } from '@supabase/supabase-js'
@@ -33,6 +34,8 @@ export default function SalespersonDetail() {
   const [isFavorited, setIsFavorited] = useState(false)
   const [favoriteLoading, setFavoriteLoading] = useState(false)
   const [preContractReviews, setPreContractReviews] = useState<any[]>([])
+  const [postPhaseReviews, setPostPhaseReviews] = useState<Record<string, any[]>>({})
+  const [userSubmittedPhases, setUserSubmittedPhases] = useState<string[]>([])
 
   const fetchReviews = async (supabase: ReturnType<typeof createClient>, currentUserId: string) => {
     const { data } = await supabase
@@ -100,6 +103,23 @@ export default function SalespersonDetail() {
             .order('created_at', { ascending: false })
             .limit(5)
           if (preReviews) setPreContractReviews(preReviews)
+
+          const { data: phasedReviews } = await supabase
+            .from('anonymous_reviews')
+            .select('id, rating, content, phase, source, created_at, user_id')
+            .eq('salesperson_id', id)
+            .in('phase', ['post_contract', 'after_start', 'after_handover'])
+            .eq('status', 'visible')
+            .order('created_at', { ascending: false })
+          if (phasedReviews) {
+            const grouped: Record<string, any[]> = {}
+            for (const r of phasedReviews) {
+              if (!grouped[r.phase]) grouped[r.phase] = []
+              grouped[r.phase].push(r)
+            }
+            setPostPhaseReviews(grouped)
+            setUserSubmittedPhases(phasedReviews.filter((r: any) => r.user_id === user.id).map((r: any) => r.phase))
+          }
         }
 
         const { data: fav } = await supabase
@@ -443,6 +463,62 @@ export default function SalespersonDetail() {
               </div>
             )}
           </div>
+
+          {/* 契約後〜引渡後の口コミ */}
+          {([
+            { key: 'post_contract', label: '契約後' },
+            { key: 'after_start', label: '着工後' },
+            { key: 'after_handover', label: '引渡後' },
+          ] as const).map(({ key, label }) => {
+            const phaseRevs = postPhaseReviews[key] ?? []
+            const alreadySubmitted = userSubmittedPhases.includes(key)
+            return (
+              <div key={key} className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-sm font-bold text-gray-700">{label}の口コミ</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{label}の対応・サポートへの評価</p>
+                  </div>
+                  {!alreadySubmitted && (
+                    <Link
+                      href={`/review/write/${id}`}
+                      className="text-xs text-orange-500 hover:text-orange-400 border border-orange-200 rounded-lg px-3 py-1.5 transition"
+                    >
+                      口コミを書く
+                    </Link>
+                  )}
+                  {alreadySubmitted && (
+                    <span className="text-xs text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">投稿済み</span>
+                  )}
+                </div>
+                {phaseRevs.length === 0 ? (
+                  <p className="text-sm text-gray-400">まだ{label}の口コミはありません</p>
+                ) : (
+                  <div className="space-y-4">
+                    {phaseRevs.map((r) => (
+                      <div key={r.id} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <span className="text-xs bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full">{label}</span>
+                          {r.user_id === user?.id && (
+                            <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">あなたの口コミ</span>
+                          )}
+                          {r.rating && (
+                            <span className="text-xs text-amber-400 ml-auto">
+                              {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-700 leading-relaxed">{r.content}</p>
+                        <p className="text-xs text-gray-400 mt-1.5">
+                          {new Date(r.created_at).toLocaleDateString('ja-JP')}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
 
           {/* 口コミ一覧 */}
           <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
