@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
@@ -17,6 +17,8 @@ const SUPABASE_FUNCTIONS_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/function
 export default function SalespersonDetail() {
   const { id } = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const isPreview = searchParams.get('preview') === '1'
   const [agent, setAgent] = useState<any>(null)
   const [unlockedData, setUnlockedData] = useState<any>(null)
   const [user, setUser] = useState<User | null>(null)
@@ -68,7 +70,7 @@ export default function SalespersonDetail() {
           .select('id')
           .eq('user_id', user.id)
           .maybeSingle()
-        if (ownProfile) {
+        if (ownProfile && ownProfile.id !== id && !isPreview) {
           router.replace('/salesperson/dashboard')
           return
         }
@@ -223,6 +225,13 @@ export default function SalespersonDetail() {
   return (
     <main className="min-h-screen bg-stone-100">
       <Header backButton />
+
+      {isPreview && (
+        <div className="bg-orange-500 px-6 py-3 flex items-center justify-between">
+          <p className="text-white text-xs font-medium">👁️ プレビューモード：施主（未開示）の視点で表示しています</p>
+          <Link href="/salesperson/dashboard?tab=preview" className="text-white text-xs underline">ダッシュボードに戻る</Link>
+        </div>
+      )}
 
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-4">
 

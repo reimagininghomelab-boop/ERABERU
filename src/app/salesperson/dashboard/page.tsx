@@ -1,67 +1,87 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { QRCodeSVG } from 'qrcode.react'
+
+type Tab = 'reviews' | 'settings' | 'preview'
+
+const PHASE_META = [
+  { key: 'pre_contract', label: '契約前', badge: 'bg-teal-50 text-teal-600' },
+  { key: 'post_contract', label: '契約後', badge: 'bg-blue-50 text-blue-600' },
+  { key: 'after_start', label: '着工後', badge: 'bg-purple-50 text-purple-600' },
+  { key: 'after_handover', label: '引渡後', badge: 'bg-green-50 text-green-600' },
+] as const
 
 const SALES_STYLE_AXES = [
   { key: 'listening_proposing', left: '傾聴型', right: '提案型' },
   { key: 'numbers_feeling', left: '数字で説明', right: '感覚で説明' },
 ]
 
+const SPECIALTY_OPTIONS = ['注文住宅', '規格住宅', '土地探し', '省エネ・ZEH', '資金計画', 'リフォーム', '建売', 'マンション']
+const QUALIFICATION_OPTIONS = ['宅地建物取引士', 'ファイナンシャルプランナー', '住宅ローンアドバイザー', '福祉住環境コーディネーター', '建築士']
+const PREFECTURES = ['北海道','青森','岩手','宮城','秋田','山形','福島','茨城','栃木','群馬','埼玉','千葉','東京','神奈川','新潟','富山','石川','福井','山梨','長野','岐阜','静岡','愛知','三重','滋賀','京都','大阪','兵庫','奈良','和歌山','鳥取','島根','岡山','広島','山口','徳島','香川','愛媛','高知','福岡','佐賀','長崎','熊本','大分','宮崎','鹿児島','沖縄']
+
 export default function SalespersonDashboard() {
   const router = useRouter()
+  const [tab, setTab] = useState<Tab>('reviews')
   const [profile, setProfile] = useState<any>(null)
-  const [anonReviews, setAnonReviews] = useState<Record<string, any[]>>({})
+  const [anonReviews, setAnonReviews] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [qrToken, setQrToken] = useState<string>('')
   const [qrReissuing, setQrReissuing] = useState(false)
   const [qrCopied, setQrCopied] = useState(false)
 
+  // settings form state
+  const [form, setForm] = useState<any>({})
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
+
+  // tag input helpers
+  const [specialtyInput, setSpecialtyInput] = useState('')
+  const [qualInput, setQualInput] = useState('')
+  const [prefInput, setPrefInput] = useState('')
+
   useEffect(() => {
     const supabase = createClient()
-
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.replace('/auth/login')
-        return
-      }
+      if (!user) { router.replace('/auth/login'); return }
 
-      const { data: ownProfile } = await supabase
+      const { data: own } = await supabase
         .from('salesperson_profiles')
-        .select('*, companies(name)')
+        .select('*')
         .eq('user_id', user.id)
         .maybeSingle()
+      if (!own) { router.replace('/'); return }
 
-      if (!ownProfile) {
-        router.replace('/')
-        return
-      }
+      setProfile(own)
+      setQrToken(own.qr_token ?? '')
+      setForm({
+        family_name: own.family_name ?? '',
+        given_name: own.given_name ?? '',
+        company_name: own.company_name ?? '',
+        department: own.department ?? '',
+        bio: own.bio ?? '',
+        core_city: own.core_city ?? '',
+        contract_count: own.contract_count ?? '',
+        specialty_styles: own.specialty_styles ?? [],
+        qualifications: own.qualifications ?? [],
+        available_prefectures: own.available_prefectures ?? [],
+        sales_styles: own.sales_styles ?? {},
+      })
 
-      setProfile(ownProfile)
-      setQrToken(ownProfile.qr_token ?? '')
-
-      const { data: anonData } = await supabase
+      const { data: ar } = await supabase
         .from('anonymous_reviews')
         .select('id, rating, content, phase, source, status, created_at')
-        .eq('salesperson_id', ownProfile.id)
-        .eq('status', 'visible')
+        .eq('salesperson_id', own.id)
         .order('created_at', { ascending: false })
-
-      if (anonData) {
-        const grouped: Record<string, any[]> = {}
-        for (const r of anonData) {
-          if (!grouped[r.phase]) grouped[r.phase] = []
-          grouped[r.phase].push(r)
-        }
-        setAnonReviews(grouped)
-      }
+      if (ar) setAnonReviews(ar)
 
       setLoading(false)
     }
-
     load()
   }, [])
 
@@ -69,43 +89,83 @@ export default function SalespersonDashboard() {
     if (!profile || qrReissuing) return
     if (!confirm('QRコードを再発行すると、以前のQRコードからの投稿ができなくなります。続けますか？')) return
     setQrReissuing(true)
-    try {
-      const newToken = crypto.randomUUID()
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('salesperson_profiles')
-        .update({ qr_token: newToken })
-        .eq('id', profile.id)
-      if (!error) setQrToken(newToken)
-    } catch {
-      // silent
-    } finally {
-      setQrReissuing(false)
-    }
+    const newToken = crypto.randomUUID()
+    const supabase = createClient()
+    const { error } = await supabase.from('salesperson_profiles').update({ qr_token: newToken }).eq('id', profile.id)
+    if (!error) setQrToken(newToken)
+    setQrReissuing(false)
   }
 
   const handleCopyQrUrl = async () => {
-    const url = `${window.location.origin}/review/${qrToken}`
-    await navigator.clipboard.writeText(url)
+    await navigator.clipboard.writeText(`${window.location.origin}/review/${qrToken}`)
     setQrCopied(true)
     setTimeout(() => setQrCopied(false), 2000)
   }
 
+  const handleToggleReview = async (id: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'visible' ? 'hidden' : 'visible'
+    const supabase = createClient()
+    const { error } = await supabase.from('anonymous_reviews').update({ status: newStatus }).eq('id', id)
+    if (!error) {
+      setAnonReviews((prev) => prev.map((r) => r.id === id ? { ...r, status: newStatus } : r))
+    }
+  }
+
+  const handleSaveSettings = async () => {
+    setSaving(true)
+    setSaveMsg('')
+    const supabase = createClient()
+    const { error } = await supabase.from('salesperson_profiles').update({
+      family_name: form.family_name || null,
+      given_name: form.given_name || null,
+      company_name: form.company_name || null,
+      department: form.department || null,
+      bio: form.bio || null,
+      core_city: form.core_city || null,
+      contract_count: form.contract_count !== '' ? Number(form.contract_count) : null,
+      specialty_styles: form.specialty_styles,
+      qualifications: form.qualifications,
+      available_prefectures: form.available_prefectures,
+      sales_styles: form.sales_styles,
+    }).eq('id', profile.id)
+    setSaving(false)
+    setSaveMsg(error ? '保存に失敗しました' : '保存しました')
+    setTimeout(() => setSaveMsg(''), 3000)
+  }
+
+  const toggleTag = (field: 'specialty_styles' | 'qualifications' | 'available_prefectures', value: string) => {
+    setForm((prev: any) => {
+      const arr: string[] = prev[field] ?? []
+      return {
+        ...prev,
+        [field]: arr.includes(value) ? arr.filter((v: string) => v !== value) : [...arr, value],
+      }
+    })
+  }
+
+  const addCustomTag = (field: 'specialty_styles' | 'qualifications' | 'available_prefectures', value: string) => {
+    const v = value.trim()
+    if (!v) return
+    setForm((prev: any) => {
+      const arr: string[] = prev[field] ?? []
+      if (arr.includes(v)) return prev
+      return { ...prev, [field]: [...arr, v] }
+    })
+  }
+
   if (loading) return (
-    <div className="min-h-screen bg-stone-100 flex items-center justify-center text-gray-400">
-      読み込み中...
-    </div>
+    <div className="min-h-screen bg-stone-100 flex items-center justify-center text-gray-400">読み込み中...</div>
   )
-
   if (!profile) return null
-
 
   const displayName = profile.family_name && profile.given_name
     ? `${profile.family_name} ${profile.given_name}`
     : profile.real_name
 
-  const salesStyles: Record<string, number> = profile.sales_styles ?? {}
-  const hasSalesStyles = SALES_STYLE_AXES.some(({ key }) => salesStyles[key] !== undefined)
+  const reviewsByPhase = PHASE_META.reduce((acc, p) => {
+    acc[p.key] = anonReviews.filter((r) => r.phase === p.key)
+    return acc
+  }, {} as Record<string, any[]>)
 
   return (
     <main className="min-h-screen bg-stone-100">
@@ -123,213 +183,382 @@ export default function SalespersonDashboard() {
         {profile.status === 'suspended' && (
           <div className="bg-gray-100 border border-gray-300 rounded-2xl px-5 py-4">
             <p className="text-sm font-semibold text-gray-600">一時停止中</p>
-            <p className="text-xs text-gray-500 mt-0.5">現在プロフィールは非公開です。詳細は運営にお問い合わせください。</p>
           </div>
         )}
         {profile.status === 'rejected' && (
           <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4">
             <p className="text-sm font-semibold text-red-600">審査否認</p>
-            <p className="text-xs text-red-500 mt-0.5">申請が否認されました。詳細は運営にお問い合わせください。</p>
           </div>
         )}
 
-        {/* プロフィールカード */}
-        <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-8">
-          <div className="flex items-start justify-between mb-6">
-            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center text-4xl">
-              👤
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              {profile.status === 'active' && <span className="text-sm bg-green-100 text-green-700 font-medium px-3 py-1 rounded-full">✓ 公開中</span>}
-              {profile.status === 'pending' && <span className="text-sm bg-amber-100 text-amber-600 px-3 py-1 rounded-full">審査中</span>}
-              {profile.status === 'suspended' && <span className="text-sm bg-gray-100 text-gray-500 px-3 py-1 rounded-full">一時停止</span>}
-              {profile.status === 'rejected' && <span className="text-sm bg-red-100 text-red-500 px-3 py-1 rounded-full">審査否認</span>}
-            </div>
+        {/* ヘッダー */}
+        <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 px-6 py-5 flex items-center justify-between">
+          <div>
+            <p className="text-lg font-bold text-gray-800">{displayName}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{profile.company_name}</p>
           </div>
-
-          <div className="space-y-5">
-            <div>
-              <p className="text-xs text-gray-400 mb-1">氏名</p>
-              <p className="text-gray-800 font-semibold">{displayName}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400 mb-1">会社名</p>
-              <p className="text-gray-800 font-semibold">{(profile.companies as any)?.name ?? profile.company_name}</p>
-            </div>
-            {profile.department && (
-              <div>
-                <p className="text-xs text-gray-400 mb-1">所属詳細</p>
-                <p className="text-gray-800">{profile.department}</p>
-              </div>
-            )}
-            {(profile.core_city || (profile.available_prefectures ?? []).length > 0) && (
-              <div>
-                <p className="text-xs text-gray-400 mb-1">活動エリア</p>
-                {profile.core_city && (
-                  <p className="text-gray-800 text-sm mb-1">📍 コアエリア: {profile.core_city}</p>
-                )}
-                {(profile.available_prefectures ?? []).length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-1">
-                    {profile.available_prefectures.map((p: string) => (
-                      <span key={p} className="text-xs bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full">{p}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            {(profile.specialty_styles ?? []).length > 0 && (
-              <div>
-                <p className="text-xs text-gray-400 mb-2">得意分野</p>
-                <div className="flex flex-wrap gap-2">
-                  {profile.specialty_styles.map((s: string) => (
-                    <span key={s} className="text-sm bg-orange-50 text-orange-500 px-3 py-1 rounded-full border border-orange-100">{s}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {(profile.qualifications ?? []).length > 0 && (
-              <div>
-                <p className="text-xs text-gray-400 mb-2">所持資格</p>
-                <div className="flex flex-wrap gap-2">
-                  {profile.qualifications.map((q: string) => (
-                    <span key={q} className="text-sm bg-blue-50 text-blue-500 px-3 py-1 rounded-full border border-blue-100">{q}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {hasSalesStyles && (
-              <div>
-                <p className="text-xs text-gray-400 mb-3">会話スタイル</p>
-                <div className="space-y-3">
-                  {SALES_STYLE_AXES.map(({ key, left, right }) => {
-                    const val = salesStyles[key] ?? 3
-                    const pct = ((val - 1) / 4) * 100
-                    return (
-                      <div key={key}>
-                        <div className="flex justify-between text-xs text-stone-400 mb-2">
-                          <span>{left}</span>
-                          <span>{right}</span>
-                        </div>
-                        <div className="relative h-5 flex items-center">
-                          <div className="absolute inset-x-0 h-1.5 rounded-full bg-stone-200" />
-                          <div
-                            className="absolute text-orange-400 leading-none -translate-x-1/2 text-base"
-                            style={{ left: `${pct}%` }}
-                          >★</div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-            {profile.bio && (
-              <div>
-                <p className="text-xs text-gray-400 mb-1">自己紹介</p>
-                <p className="text-sm text-gray-700 leading-relaxed">{profile.bio}</p>
-              </div>
-            )}
-          </div>
+          {profile.status === 'active' && (
+            <span className="text-xs bg-green-100 text-green-700 font-medium px-3 py-1 rounded-full">✓ 公開中</span>
+          )}
         </div>
 
-        {/* 口コミQRコード */}
-        {profile.status === 'active' && qrToken && (
-          <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-sm font-bold text-gray-700">口コミ用QRコード</p>
-                <p className="text-xs text-gray-400 mt-0.5">お客様に読み取ってもらうと、会員登録なしで口コミを投稿できます</p>
+        {/* タブ */}
+        <div className="flex bg-stone-200 rounded-xl p-1 gap-1">
+          {([
+            { key: 'reviews', label: '口コミ管理' },
+            { key: 'settings', label: 'プロフィール設定' },
+            { key: 'preview', label: '施主プレビュー' },
+          ] as { key: Tab; label: string }[]).map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex-1 text-xs font-medium py-2 rounded-lg transition ${
+                tab === t.key ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ===== 口コミ管理タブ ===== */}
+        {tab === 'reviews' && (
+          <div className="space-y-4">
+            {/* QRコード */}
+            {profile.status === 'active' && qrToken && (
+              <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
+                <div className="mb-4">
+                  <p className="text-sm font-bold text-gray-700">口コミ用QRコード（契約前）</p>
+                  <p className="text-xs text-gray-400 mt-0.5">お客様に読み取ってもらうと、会員登録なしで口コミを投稿できます</p>
+                </div>
+                <div className="flex flex-col items-center gap-4">
+                  <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
+                    <QRCodeSVG
+                      value={`${typeof window !== 'undefined' ? window.location.origin : 'https://eigyo-no-tsuchihyo.vercel.app'}/review/${qrToken}`}
+                      size={160}
+                      bgColor="#ffffff"
+                      fgColor="#1c1917"
+                    />
+                  </div>
+                  <div className="flex gap-2 w-full">
+                    <button
+                      onClick={handleCopyQrUrl}
+                      className="flex-1 text-sm border border-stone-300 text-gray-600 hover:bg-stone-100 font-medium py-2.5 rounded-xl transition"
+                    >
+                      {qrCopied ? '✓ コピー済み' : 'URLをコピー'}
+                    </button>
+                    <button
+                      onClick={handleReissueQr}
+                      disabled={qrReissuing}
+                      className="flex-1 text-sm border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 font-medium py-2.5 rounded-xl transition"
+                    >
+                      {qrReissuing ? '再発行中...' : 'QRを再発行'}
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="flex flex-col items-center gap-4">
-              <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm">
-                <QRCodeSVG
-                  value={`${typeof window !== 'undefined' ? window.location.origin : 'https://eigyo-no-tsuchihyo.vercel.app'}/review/${qrToken}`}
-                  size={160}
-                  bgColor="#ffffff"
-                  fgColor="#1c1917"
+            )}
+
+            {/* フェーズ別口コミ */}
+            {PHASE_META.map(({ key, label, badge }) => {
+              const phaseRevs = reviewsByPhase[key] ?? []
+              const visibleCount = phaseRevs.filter((r) => r.status === 'visible').length
+              return (
+                <div key={key} className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${badge}`}>{label}</span>
+                      <span className="text-xs text-gray-400">{visibleCount}/{phaseRevs.length}件表示中</span>
+                    </div>
+                  </div>
+                  {phaseRevs.length === 0 ? (
+                    <p className="text-sm text-gray-400">まだ口コミはありません</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {phaseRevs.map((r) => (
+                        <div key={r.id} className={`rounded-xl border p-4 transition ${r.status === 'hidden' ? 'border-stone-100 bg-stone-50 opacity-60' : 'border-stone-200 bg-white'}`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              {r.rating && (
+                                <p className="text-sm text-amber-400 mb-1">
+                                  {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                                </p>
+                              )}
+                              <p className={`text-sm leading-relaxed ${r.status === 'hidden' ? 'text-gray-400' : 'text-gray-700'}`}>
+                                {r.content}
+                              </p>
+                              <p className="text-xs text-gray-400 mt-1.5">
+                                {new Date(r.created_at).toLocaleDateString('ja-JP')}
+                                {r.status === 'hidden' && <span className="ml-2 text-stone-400">（非表示中）</span>}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => handleToggleReview(r.id, r.status)}
+                              className={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border transition ${
+                                r.status === 'visible'
+                                  ? 'border-stone-300 text-gray-500 hover:bg-stone-100'
+                                  : 'border-orange-200 text-orange-500 hover:bg-orange-50'
+                              }`}
+                            >
+                              {r.status === 'visible' ? '非表示にする' : '表示する'}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ===== プロフィール設定タブ ===== */}
+        {tab === 'settings' && (
+          <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6 space-y-6">
+
+            {/* 氏名 */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">姓</label>
+                <input
+                  value={form.family_name}
+                  onChange={(e) => setForm((p: any) => ({ ...p, family_name: e.target.value }))}
+                  className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  placeholder="山田"
                 />
               </div>
-              <div className="flex gap-2 w-full">
-                <button
-                  onClick={handleCopyQrUrl}
-                  className="flex-1 text-sm border border-stone-300 text-gray-600 hover:bg-stone-100 font-medium py-2.5 rounded-xl transition"
-                >
-                  {qrCopied ? '✓ コピー済み' : 'URLをコピー'}
-                </button>
-                <button
-                  onClick={handleReissueQr}
-                  disabled={qrReissuing}
-                  className="flex-1 text-sm border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 font-medium py-2.5 rounded-xl transition"
-                >
-                  {qrReissuing ? '再発行中...' : 'QRを再発行'}
-                </button>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">名</label>
+                <input
+                  value={form.given_name}
+                  onChange={(e) => setForm((p: any) => ({ ...p, given_name: e.target.value }))}
+                  className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  placeholder="太郎"
+                />
               </div>
-              <p className="text-xs text-gray-300 text-center">
-                再発行すると以前のQRコードは無効になります
+            </div>
+
+            {/* 会社・部署 */}
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">会社名</label>
+              <input
+                value={form.company_name}
+                onChange={(e) => setForm((p: any) => ({ ...p, company_name: e.target.value }))}
+                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="○○ハウス株式会社"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">所属・部署（任意）</label>
+              <input
+                value={form.department}
+                onChange={(e) => setForm((p: any) => ({ ...p, department: e.target.value }))}
+                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="住宅営業部"
+              />
+            </div>
+
+            {/* 自己紹介 */}
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">自己紹介</label>
+              <textarea
+                value={form.bio}
+                onChange={(e) => setForm((p: any) => ({ ...p, bio: e.target.value }))}
+                rows={4}
+                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white resize-none focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="お客様の理想の暮らしを一緒に実現します。"
+              />
+            </div>
+
+            {/* 累計成約数 */}
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">累計成約数（棟）</label>
+              <input
+                type="number"
+                value={form.contract_count}
+                onChange={(e) => setForm((p: any) => ({ ...p, contract_count: e.target.value }))}
+                className="w-40 border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="50"
+                min={0}
+              />
+            </div>
+
+            {/* コアエリア */}
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">コアエリア（市区町村）</label>
+              <input
+                value={form.core_city}
+                onChange={(e) => setForm((p: any) => ({ ...p, core_city: e.target.value }))}
+                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                placeholder="名古屋市中区"
+              />
+            </div>
+
+            {/* 対応可能エリア（都道府県） */}
+            <div>
+              <label className="text-xs text-gray-500 mb-2 block">対応可能エリア（都道府県）</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {PREFECTURES.map((pref) => (
+                  <button
+                    key={pref}
+                    onClick={() => toggleTag('available_prefectures', pref)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                      (form.available_prefectures ?? []).includes(pref)
+                        ? 'bg-orange-500 text-white border-orange-500'
+                        : 'bg-white text-gray-500 border-stone-200 hover:border-orange-300'
+                    }`}
+                  >
+                    {pref}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 得意分野 */}
+            <div>
+              <label className="text-xs text-gray-500 mb-2 block">得意分野</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {SPECIALTY_OPTIONS.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => toggleTag('specialty_styles', s)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                      (form.specialty_styles ?? []).includes(s)
+                        ? 'bg-orange-500 text-white border-orange-500'
+                        : 'bg-white text-gray-500 border-stone-200 hover:border-orange-300'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={specialtyInput}
+                  onChange={(e) => setSpecialtyInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { addCustomTag('specialty_styles', specialtyInput); setSpecialtyInput('') } }}
+                  className="flex-1 border border-stone-200 rounded-xl px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  placeholder="その他を入力してEnter"
+                />
+              </div>
+              {(form.specialty_styles ?? []).filter((s: string) => !SPECIALTY_OPTIONS.includes(s)).map((s: string) => (
+                <span key={s} className="inline-flex items-center gap-1 text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full mt-1 mr-1">
+                  {s}
+                  <button onClick={() => toggleTag('specialty_styles', s)} className="ml-0.5 hover:text-red-500">×</button>
+                </span>
+              ))}
+            </div>
+
+            {/* 所持資格 */}
+            <div>
+              <label className="text-xs text-gray-500 mb-2 block">所持資格</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {QUALIFICATION_OPTIONS.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => toggleTag('qualifications', q)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                      (form.qualifications ?? []).includes(q)
+                        ? 'bg-blue-500 text-white border-blue-500'
+                        : 'bg-white text-gray-500 border-stone-200 hover:border-blue-300'
+                    }`}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={qualInput}
+                  onChange={(e) => setQualInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { addCustomTag('qualifications', qualInput); setQualInput('') } }}
+                  className="flex-1 border border-stone-200 rounded-xl px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  placeholder="その他を入力してEnter"
+                />
+              </div>
+              {(form.qualifications ?? []).filter((q: string) => !QUALIFICATION_OPTIONS.includes(q)).map((q: string) => (
+                <span key={q} className="inline-flex items-center gap-1 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full mt-1 mr-1">
+                  {q}
+                  <button onClick={() => toggleTag('qualifications', q)} className="ml-0.5 hover:text-red-500">×</button>
+                </span>
+              ))}
+            </div>
+
+            {/* 会話スタイル */}
+            <div>
+              <label className="text-xs text-gray-500 mb-3 block">会話スタイル</label>
+              <div className="space-y-4">
+                {SALES_STYLE_AXES.map(({ key, left, right }) => {
+                  const val = (form.sales_styles ?? {})[key] ?? 3
+                  return (
+                    <div key={key}>
+                      <div className="flex justify-between text-xs text-stone-500 mb-2">
+                        <span>{left}</span>
+                        <span>{right}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={5}
+                        value={val}
+                        onChange={(e) => setForm((p: any) => ({
+                          ...p,
+                          sales_styles: { ...(p.sales_styles ?? {}), [key]: Number(e.target.value) }
+                        }))}
+                        className="w-full accent-orange-500"
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 保存 */}
+            <div className="pt-2">
+              {saveMsg && (
+                <p className={`text-sm mb-3 ${saveMsg.includes('失敗') ? 'text-red-500' : 'text-green-600'}`}>
+                  {saveMsg}
+                </p>
+              )}
+              <button
+                onClick={handleSaveSettings}
+                disabled={saving}
+                className="w-full bg-orange-500 hover:bg-orange-400 disabled:bg-orange-300 text-white font-bold py-3 rounded-xl transition text-sm"
+              >
+                {saving ? '保存中...' : '変更を保存する'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ===== 施主プレビュータブ ===== */}
+        {tab === 'preview' && (
+          <div className="space-y-4">
+            <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6 text-center space-y-4">
+              <span className="text-4xl block">👁️</span>
+              <div>
+                <p className="text-sm font-bold text-gray-700">施主に表示される画面を確認する</p>
+                <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                  施主（購入検討者）がプロフィールページを開いたときの表示を確認できます。<br />
+                  有料開示前の表示を確認できます。
+                </p>
+              </div>
+              <Link
+                href={`/salesperson/${profile.id}?preview=1`}
+                className="block w-full bg-orange-500 hover:bg-orange-400 text-white font-bold py-3 rounded-xl transition text-sm"
+              >
+                プレビューを開く
+              </Link>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <p className="text-xs text-amber-700 leading-relaxed">
+                プレビューは施主（未開示）の視点で表示されます。有料開示後のコンテンツ（実名・自己紹介・口コミ詳細）はプレビューには含まれません。
               </p>
             </div>
           </div>
         )}
-
-        {/* 契約前の口コミ（QR） */}
-        <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
-          <div className="mb-4">
-            <p className="text-sm font-bold text-gray-700">契約前の口コミ（QR投稿）</p>
-            <p className="text-xs text-gray-400 mt-0.5">QRコードから投稿された直近の口コミです</p>
-          </div>
-          {(anonReviews['pre_contract'] ?? []).length === 0 ? (
-            <p className="text-sm text-gray-400">まだ口コミはありません</p>
-          ) : (
-            <div className="space-y-4">
-              {(anonReviews['pre_contract'] ?? []).slice(0, 10).map((r) => (
-                <div key={r.id} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
-                  {r.rating && (
-                    <p className="text-sm text-amber-400 mb-1">
-                      {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
-                    </p>
-                  )}
-                  <p className="text-sm text-gray-700 leading-relaxed">{r.content}</p>
-                  <p className="text-xs text-gray-400 mt-1.5">
-                    {new Date(r.created_at).toLocaleDateString('ja-JP')}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* 契約後〜引渡後の口コミ */}
-        {([
-          { key: 'post_contract', label: '契約後' },
-          { key: 'after_start', label: '着工後' },
-          { key: 'after_handover', label: '引渡後' },
-        ] as const).map(({ key, label }) => (
-          <div key={key} className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
-            <div className="mb-4">
-              <p className="text-sm font-bold text-gray-700">{label}の口コミ</p>
-            </div>
-            {(anonReviews[key] ?? []).length === 0 ? (
-              <p className="text-sm text-gray-400">まだ口コミはありません</p>
-            ) : (
-              <div className="space-y-4">
-                {(anonReviews[key] ?? []).map((r) => (
-                  <div key={r.id} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
-                    {r.rating && (
-                      <p className="text-sm text-amber-400 mb-1">
-                        {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
-                      </p>
-                    )}
-                    <p className="text-sm text-gray-700 leading-relaxed">{r.content}</p>
-                    <p className="text-xs text-gray-400 mt-1.5">
-                      {new Date(r.created_at).toLocaleDateString('ja-JP')}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ))}
 
       </div>
     </main>
