@@ -13,7 +13,7 @@ const SALES_STYLE_AXES = [
 export default function SalespersonDashboard() {
   const router = useRouter()
   const [profile, setProfile] = useState<any>(null)
-  const [reviews, setReviews] = useState<any[]>([])
+  const [anonReviews, setAnonReviews] = useState<Record<string, any[]>>({})
   const [loading, setLoading] = useState(true)
   const [qrToken, setQrToken] = useState<string>('')
   const [qrReissuing, setQrReissuing] = useState(false)
@@ -43,13 +43,22 @@ export default function SalespersonDashboard() {
       setProfile(ownProfile)
       setQrToken(ownProfile.qr_token ?? '')
 
-      const { data: reviewData } = await supabase
-        .from('contract_reviews')
-        .select('id, rating, content, meeting_status, contract_price, is_approved, created_at')
+      const { data: anonData } = await supabase
+        .from('anonymous_reviews')
+        .select('id, rating, content, phase, source, status, created_at')
         .eq('salesperson_id', ownProfile.id)
+        .eq('status', 'visible')
         .order('created_at', { ascending: false })
 
-      if (reviewData) setReviews(reviewData)
+      if (anonData) {
+        const grouped: Record<string, any[]> = {}
+        for (const r of anonData) {
+          if (!grouped[r.phase]) grouped[r.phase] = []
+          grouped[r.phase].push(r)
+        }
+        setAnonReviews(grouped)
+      }
+
       setLoading(false)
     }
 
@@ -90,11 +99,6 @@ export default function SalespersonDashboard() {
 
   if (!profile) return null
 
-  const approvedReviews = reviews.filter((r) => r.is_approved)
-  const pendingReviews = reviews.filter((r) => !r.is_approved)
-  const avgRating = approvedReviews.length > 0
-    ? (approvedReviews.reduce((sum, r) => sum + (r.rating ?? 0), 0) / approvedReviews.length).toFixed(1)
-    : null
 
   const displayName = profile.family_name && profile.given_name
     ? `${profile.family_name} ${profile.given_name}`
@@ -268,49 +272,25 @@ export default function SalespersonDashboard() {
           </div>
         )}
 
-        {/* 口コミ統計 */}
+        {/* 契約前の口コミ（QR） */}
         <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
-          <p className="text-sm font-bold text-gray-700 mb-4">受け取った口コミ</p>
-          <div className="flex gap-6 mb-5">
-            <div className="text-center">
-              <p className="text-2xl font-black text-gray-800">{approvedReviews.length}</p>
-              <p className="text-xs text-gray-400 mt-0.5">公開中</p>
-            </div>
-            {pendingReviews.length > 0 && (
-              <div className="text-center">
-                <p className="text-2xl font-black text-amber-500">{pendingReviews.length}</p>
-                <p className="text-xs text-gray-400 mt-0.5">確認中</p>
-              </div>
-            )}
-            {avgRating && (
-              <div className="text-center">
-                <p className="text-2xl font-black text-amber-400">★ {avgRating}</p>
-                <p className="text-xs text-gray-400 mt-0.5">平均評価</p>
-              </div>
-            )}
+          <div className="mb-4">
+            <p className="text-sm font-bold text-gray-700">契約前の口コミ（QR投稿）</p>
+            <p className="text-xs text-gray-400 mt-0.5">QRコードから投稿された直近の口コミです</p>
           </div>
-
-          {approvedReviews.length === 0 ? (
+          {(anonReviews['pre_contract'] ?? []).length === 0 ? (
             <p className="text-sm text-gray-400">まだ口コミはありません</p>
           ) : (
             <div className="space-y-4">
-              {approvedReviews.map((r) => (
+              {(anonReviews['pre_contract'] ?? []).slice(0, 10).map((r) => (
                 <div key={r.id} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
                   {r.rating && (
                     <p className="text-sm text-amber-400 mb-1">
                       {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
                     </p>
                   )}
-                  {r.meeting_status && (
-                    <p className="text-xs text-gray-400 mb-1">📋 {r.meeting_status}</p>
-                  )}
-                  {r.contract_price && (
-                    <p className="text-xs text-gray-400 mb-1">
-                      成約価格: {(r.contract_price / 10000).toLocaleString()}万円
-                    </p>
-                  )}
                   <p className="text-sm text-gray-700 leading-relaxed">{r.content}</p>
-                  <p className="text-xs text-gray-400 mt-2">
+                  <p className="text-xs text-gray-400 mt-1.5">
                     {new Date(r.created_at).toLocaleDateString('ja-JP')}
                   </p>
                 </div>
@@ -318,6 +298,38 @@ export default function SalespersonDashboard() {
             </div>
           )}
         </div>
+
+        {/* 契約後〜引渡後の口コミ */}
+        {([
+          { key: 'post_contract', label: '契約後' },
+          { key: 'after_start', label: '着工後' },
+          { key: 'after_handover', label: '引渡後' },
+        ] as const).map(({ key, label }) => (
+          <div key={key} className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
+            <div className="mb-4">
+              <p className="text-sm font-bold text-gray-700">{label}の口コミ</p>
+            </div>
+            {(anonReviews[key] ?? []).length === 0 ? (
+              <p className="text-sm text-gray-400">まだ口コミはありません</p>
+            ) : (
+              <div className="space-y-4">
+                {(anonReviews[key] ?? []).map((r) => (
+                  <div key={r.id} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
+                    {r.rating && (
+                      <p className="text-sm text-amber-400 mb-1">
+                        {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                      </p>
+                    )}
+                    <p className="text-sm text-gray-700 leading-relaxed">{r.content}</p>
+                    <p className="text-xs text-gray-400 mt-1.5">
+                      {new Date(r.created_at).toLocaleDateString('ja-JP')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
 
       </div>
     </main>
