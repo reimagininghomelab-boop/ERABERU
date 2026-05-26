@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { QRCodeSVG } from 'qrcode.react'
+import { MUNICIPALITIES, PREFECTURES } from '@/lib/municipalities'
 
 type Tab = 'reviews' | 'settings' | 'preview'
 
@@ -22,7 +23,6 @@ const SALES_STYLE_AXES = [
 
 const SPECIALTY_OPTIONS = ['注文住宅', '規格住宅', '土地探し', '省エネ・ZEH', '資金計画', 'リフォーム', '建売', 'マンション']
 const QUALIFICATION_OPTIONS = ['宅地建物取引士', 'ファイナンシャルプランナー', '住宅ローンアドバイザー', '福祉住環境コーディネーター', '建築士']
-const PREFECTURES = ['北海道','青森','岩手','宮城','秋田','山形','福島','茨城','栃木','群馬','埼玉','千葉','東京','神奈川','新潟','富山','石川','福井','山梨','長野','岐阜','静岡','愛知','三重','滋賀','京都','大阪','兵庫','奈良','和歌山','鳥取','島根','岡山','広島','山口','徳島','香川','愛媛','高知','福岡','佐賀','長崎','熊本','大分','宮崎','鹿児島','沖縄']
 
 export default function SalespersonDashboard() {
   const router = useRouter()
@@ -42,7 +42,7 @@ export default function SalespersonDashboard() {
   // tag input helpers
   const [specialtyInput, setSpecialtyInput] = useState('')
   const [qualInput, setQualInput] = useState('')
-  const [prefInput, setPrefInput] = useState('')
+  const [corePrefecture, setCorePrefecture] = useState('')
 
   useEffect(() => {
     const supabase = createClient()
@@ -59,19 +59,27 @@ export default function SalespersonDashboard() {
 
       setProfile(own)
       setQrToken(own.qr_token ?? '')
+      const coreCity = own.core_city ?? ''
       setForm({
         family_name: own.family_name ?? '',
         given_name: own.given_name ?? '',
         company_name: own.company_name ?? '',
         department: own.department ?? '',
         bio: own.bio ?? '',
-        core_city: own.core_city ?? '',
+        core_city: coreCity,
         contract_count: own.contract_count ?? '',
         specialty_styles: own.specialty_styles ?? [],
         qualifications: own.qualifications ?? [],
         available_prefectures: own.available_prefectures ?? [],
         sales_styles: own.sales_styles ?? {},
       })
+      // 既存のcore_cityから都道府県を逆引きして初期化
+      if (coreCity) {
+        const foundPref = PREFECTURES.find((pref) =>
+          (MUNICIPALITIES[pref] ?? []).includes(coreCity)
+        )
+        if (foundPref) setCorePrefecture(foundPref)
+      }
 
       const { data: ar } = await supabase
         .from('anonymous_reviews')
@@ -386,13 +394,33 @@ export default function SalespersonDashboard() {
 
             {/* コアエリア */}
             <div>
-              <label className="text-xs text-gray-500 mb-1 block">コアエリア（市区町村）</label>
-              <input
-                value={form.core_city}
-                onChange={(e) => setForm((p: any) => ({ ...p, core_city: e.target.value }))}
-                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
-                placeholder="名古屋市中区"
-              />
+              <label className="text-xs text-gray-500 mb-2 block">コアエリア（市区町村）</label>
+              <div className="flex gap-2 mb-2">
+                <select
+                  value={corePrefecture}
+                  onChange={(e) => { setCorePrefecture(e.target.value); setForm((p: any) => ({ ...p, core_city: '' })) }}
+                  className="flex-1 border border-stone-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                >
+                  <option value="">都道府県を選択</option>
+                  {PREFECTURES.map((pref) => (
+                    <option key={pref} value={pref}>{pref}</option>
+                  ))}
+                </select>
+                <select
+                  value={form.core_city}
+                  onChange={(e) => setForm((p: any) => ({ ...p, core_city: e.target.value }))}
+                  disabled={!corePrefecture}
+                  className="flex-1 border border-stone-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:opacity-50"
+                >
+                  <option value="">市区町村を選択</option>
+                  {(MUNICIPALITIES[corePrefecture] ?? []).map((city) => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+              </div>
+              {form.core_city && (
+                <p className="text-xs text-orange-600 font-medium">選択中: {form.core_city}</p>
+              )}
             </div>
 
             {/* 対応可能エリア（都道府県） */}

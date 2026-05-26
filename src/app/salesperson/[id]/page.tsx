@@ -25,7 +25,7 @@ export default function SalespersonDetail() {
   const [paying, setPaying] = useState(false)
   const [payError, setPayError] = useState('')
   const [reviews, setReviews] = useState<any[]>([])
-  const [reviewStats, setReviewStats] = useState<{ total: number; approved: number; rate: number | null } | null>(null)
+  const [reviewStats, setReviewStats] = useState<{ total: number; visible: number; rate: number | null; avg_rating: number | null } | null>(null)
   const [formRating, setFormRating] = useState(0)
   const [formContent, setFormContent] = useState('')
   const [formPrice, setFormPrice] = useState('')
@@ -35,9 +35,16 @@ export default function SalespersonDetail() {
   const [submitError, setSubmitError] = useState('')
   const [isFavorited, setIsFavorited] = useState(false)
   const [favoriteLoading, setFavoriteLoading] = useState(false)
-  const [preContractReviews, setPreContractReviews] = useState<any[]>([])
-  const [postPhaseReviews, setPostPhaseReviews] = useState<Record<string, any[]>>({})
+  const [allAnonReviews, setAllAnonReviews] = useState<any[]>([])
+  const [phaseFilter, setPhaseFilter] = useState<string>('all')
   const [userSubmittedPhases, setUserSubmittedPhases] = useState<string[]>([])
+
+  const PHASE_META: Record<string, { label: string; bg: string; border: string; text: string }> = {
+    pre_contract:   { label: '契約前', bg: 'bg-teal-50',   border: 'border-teal-200',   text: 'text-teal-700' },
+    post_contract:  { label: '契約後', bg: 'bg-blue-50',   border: 'border-blue-200',   text: 'text-blue-700' },
+    after_start:    { label: '着工後', bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700' },
+    after_handover: { label: '引渡後', bg: 'bg-green-50',  border: 'border-green-200',  text: 'text-green-700' },
+  }
 
   const fetchReviews = async (supabase: ReturnType<typeof createClient>, currentUserId: string) => {
     const { data } = await supabase
@@ -96,31 +103,19 @@ export default function SalespersonDetail() {
           setUnlockedData(full)
           await fetchReviews(supabase, user.id)
 
-          const { data: preReviews } = await supabase
-            .from('anonymous_reviews')
-            .select('id, rating, content, phase, source, created_at')
-            .eq('salesperson_id', id)
-            .eq('phase', 'pre_contract')
-            .eq('status', 'visible')
-            .order('created_at', { ascending: false })
-            .limit(5)
-          if (preReviews) setPreContractReviews(preReviews)
-
-          const { data: phasedReviews } = await supabase
+          const { data: anonData } = await supabase
             .from('anonymous_reviews')
             .select('id, rating, content, phase, source, created_at, user_id')
             .eq('salesperson_id', id)
-            .in('phase', ['post_contract', 'after_start', 'after_handover'])
             .eq('status', 'visible')
             .order('created_at', { ascending: false })
-          if (phasedReviews) {
-            const grouped: Record<string, any[]> = {}
-            for (const r of phasedReviews) {
-              if (!grouped[r.phase]) grouped[r.phase] = []
-              grouped[r.phase].push(r)
-            }
-            setPostPhaseReviews(grouped)
-            setUserSubmittedPhases(phasedReviews.filter((r: any) => r.user_id === user.id).map((r: any) => r.phase))
+          if (anonData) {
+            setAllAnonReviews(anonData)
+            setUserSubmittedPhases(
+              anonData
+                .filter((r: any) => r.user_id === user.id && r.phase !== 'pre_contract')
+                .map((r: any) => r.phase)
+            )
           }
         }
 
@@ -337,13 +332,18 @@ export default function SalespersonDetail() {
               )
             })()}
 
-            {/* 口コミ公開率（開示前でも表示） */}
-            {reviewStats && (
-              <div className="pt-3 border-t border-stone-100">
-                <p className="text-xs text-gray-400 mb-1">口コミ公開率</p>
-                {reviewStats.total === 0 ? (
-                  <p className="text-sm text-gray-400">口コミなし</p>
-                ) : (
+            {/* 口コミ統計（開示前でも表示） */}
+            {reviewStats && reviewStats.total > 0 && (
+              <div className="pt-3 border-t border-stone-100 space-y-2">
+                {reviewStats.avg_rating !== null && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-400 text-lg">{'★'.repeat(Math.round(reviewStats.avg_rating))}{'☆'.repeat(5 - Math.round(reviewStats.avg_rating))}</span>
+                    <span className="text-sm font-semibold text-gray-700">{reviewStats.avg_rating}</span>
+                    <span className="text-xs text-gray-400">（{reviewStats.visible}件）</span>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">口コミ公開率</p>
                   <div className="flex items-center gap-3">
                     <div className="flex-1 bg-stone-200 rounded-full h-2">
                       <div
@@ -351,14 +351,10 @@ export default function SalespersonDetail() {
                         style={{ width: `${reviewStats.rate ?? 0}%` }}
                       />
                     </div>
-                    <span className="text-sm font-semibold text-gray-700">
-                      {reviewStats.rate ?? 0}%
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      （{reviewStats.approved}/{reviewStats.total}件承認）
-                    </span>
+                    <span className="text-sm font-semibold text-gray-700">{reviewStats.rate ?? 0}%</span>
+                    <span className="text-xs text-gray-400">（{reviewStats.visible}/{reviewStats.total}件）</span>
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>
@@ -440,79 +436,58 @@ export default function SalespersonDetail() {
             </div>
           </div>
 
-          {/* 契約前の口コミ */}
+          {/* 口コミ一覧（全フェーズ統合） */}
           <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
-            <div className="mb-4">
-              <p className="text-sm font-bold text-gray-700">契約前の口コミ</p>
-              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                契約前の面談・提案・相談時点での印象です。直近5件のみ表示しています。
-              </p>
-            </div>
-            {preContractReviews.length === 0 ? (
-              <p className="text-sm text-gray-400">まだ契約前の口コミはありません</p>
-            ) : (
-              <div className="space-y-4">
-                {preContractReviews.map((r) => (
-                  <div key={r.id} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="text-xs bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full">契約前</span>
-                      <span className="text-xs bg-teal-50 text-teal-600 px-2 py-0.5 rounded-full">QR投稿</span>
-                      {r.rating && (
-                        <span className="text-xs text-amber-400 ml-auto">
-                          {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-700 leading-relaxed">{r.content}</p>
-                    <p className="text-xs text-gray-400 mt-1.5">
-                      {new Date(r.created_at).toLocaleDateString('ja-JP')}
-                    </p>
-                  </div>
-                ))}
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm font-bold text-gray-700">口コミ</p>
+                <p className="text-xs text-gray-400 mt-0.5">{allAnonReviews.length}件</p>
               </div>
-            )}
-          </div>
+              <div className="flex items-center gap-2">
+                {userSubmittedPhases.length < 3 && (
+                  <Link
+                    href={`/review/write/${id}`}
+                    className="text-xs text-orange-500 hover:text-orange-400 border border-orange-200 rounded-lg px-3 py-1.5 transition"
+                  >
+                    口コミを書く
+                  </Link>
+                )}
+                <select
+                  value={phaseFilter}
+                  onChange={(e) => setPhaseFilter(e.target.value)}
+                  className="text-xs border border-stone-200 rounded-lg px-2 py-1.5 bg-white text-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-300"
+                >
+                  <option value="all">全フェーズ</option>
+                  <option value="pre_contract">契約前</option>
+                  <option value="post_contract">契約後</option>
+                  <option value="after_start">着工後</option>
+                  <option value="after_handover">引渡後</option>
+                </select>
+              </div>
+            </div>
 
-          {/* 契約後〜引渡後の口コミ */}
-          {([
-            { key: 'post_contract', label: '契約後' },
-            { key: 'after_start', label: '着工後' },
-            { key: 'after_handover', label: '引渡後' },
-          ] as const).map(({ key, label }) => {
-            const phaseRevs = postPhaseReviews[key] ?? []
-            const alreadySubmitted = userSubmittedPhases.includes(key)
-            return (
-              <div key={key} className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-sm font-bold text-gray-700">{label}の口コミ</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{label}の対応・サポートへの評価</p>
-                  </div>
-                  {!alreadySubmitted && (
-                    <Link
-                      href={`/review/write/${id}`}
-                      className="text-xs text-orange-500 hover:text-orange-400 border border-orange-200 rounded-lg px-3 py-1.5 transition"
-                    >
-                      口コミを書く
-                    </Link>
-                  )}
-                  {alreadySubmitted && (
-                    <span className="text-xs text-green-600 bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">投稿済み</span>
-                  )}
-                </div>
-                {phaseRevs.length === 0 ? (
-                  <p className="text-sm text-gray-400">まだ{label}の口コミはありません</p>
-                ) : (
-                  <div className="space-y-4">
-                    {phaseRevs.map((r) => (
-                      <div key={r.id} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
+            {(() => {
+              const filtered = phaseFilter === 'all'
+                ? allAnonReviews
+                : allAnonReviews.filter((r) => r.phase === phaseFilter)
+              if (filtered.length === 0) {
+                return <p className="text-sm text-gray-400">口コミはありません</p>
+              }
+              return (
+                <div className="space-y-3">
+                  {filtered.map((r) => {
+                    const meta = PHASE_META[r.phase] ?? PHASE_META['pre_contract']
+                    return (
+                      <div key={r.id} className={`rounded-xl border p-4 ${meta.bg} ${meta.border}`}>
                         <div className="flex items-center gap-2 mb-2 flex-wrap">
-                          <span className="text-xs bg-stone-100 text-stone-600 px-2 py-0.5 rounded-full">{label}</span>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full bg-white border ${meta.border} ${meta.text}`}>
+                            {meta.label}
+                          </span>
                           {r.user_id === user?.id && (
-                            <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">あなたの口コミ</span>
+                            <span className="text-xs bg-orange-50 text-orange-500 border border-orange-200 px-2 py-0.5 rounded-full">あなたの口コミ</span>
                           )}
                           {r.rating && (
-                            <span className="text-xs text-amber-400 ml-auto">
+                            <span className="text-xs text-amber-500 ml-auto">
                               {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
                             </span>
                           )}
@@ -522,12 +497,12 @@ export default function SalespersonDetail() {
                           {new Date(r.created_at).toLocaleDateString('ja-JP')}
                         </p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+                    )
+                  })}
+                </div>
+              )
+            })()}
+          </div>
 
           {/* 口コミ一覧 */}
           <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
