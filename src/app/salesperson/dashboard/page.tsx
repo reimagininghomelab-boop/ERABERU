@@ -22,6 +22,15 @@ const SALES_STYLE_AXES = [
 ]
 
 const SPECIALTY_OPTIONS = ['注文住宅', '規格住宅', '土地探し', '省エネ・ZEH', '資金計画', 'リフォーム', '建売', 'マンション']
+
+const SPECIALTIES_OPTIONS = [
+  '資金計画の相談', '住宅ローンの相談', '土地探しからの家づくり', '土地の注意点整理',
+  '間取り要望の整理', '家事動線・生活動線の相談', '収納計画の相談', '子育て世帯の住まい相談',
+  '共働き世帯の住まい相談', '平屋の相談', '二世帯住宅の相談', '断熱・省エネ住宅の説明',
+  '耐震性能の説明', '外観・内装デザインの相談', '設備・仕様選びの相談', '見積内容の説明',
+  '契約前の不安整理', '他社比較中の判断整理', '打合せ内容の整理', '引渡し後のフォロー',
+]
+const MAX_SPECIALTIES = 5
 const QUALIFICATION_OPTIONS = ['宅地建物取引士', 'ファイナンシャルプランナー', '住宅ローンアドバイザー', '福祉住環境コーディネーター', '建築士']
 
 export default function SalespersonDashboard() {
@@ -70,6 +79,7 @@ export default function SalespersonDashboard() {
         contract_count: own.contract_count ?? '',
         specialty_styles: own.specialty_styles ?? [],
         qualifications: own.qualifications ?? [],
+        specialties: own.specialties ?? [],
         available_prefectures: own.available_prefectures ?? [],
         sales_styles: own.sales_styles ?? {},
       })
@@ -133,6 +143,7 @@ export default function SalespersonDashboard() {
       contract_count: form.contract_count !== '' ? Number(form.contract_count) : null,
       specialty_styles: form.specialty_styles,
       qualifications: form.qualifications,
+      specialties: form.specialties ?? [],
       available_prefectures: form.available_prefectures,
       sales_styles: form.sales_styles,
     }).eq('id', profile.id)
@@ -511,6 +522,43 @@ export default function SalespersonDashboard() {
                   <button onClick={() => toggleTag('qualifications', q)} className="ml-0.5 hover:text-red-500">×</button>
                 </span>
               ))}
+            </div>
+
+            {/* 得意分野（相談に乗りやすい分野） */}
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">得意分野（本人が選択した相談に乗りやすい分野）</label>
+              <p className="text-xs text-gray-400 mb-3">最大{MAX_SPECIALTIES}つまで選択できます。</p>
+              <div className="flex flex-wrap gap-2">
+                {SPECIALTIES_OPTIONS.map((item) => {
+                  const selected = (form.specialties ?? []).includes(item)
+                  const atLimit = (form.specialties ?? []).length >= MAX_SPECIALTIES
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => {
+                        setForm((prev: any) => {
+                          const arr: string[] = prev.specialties ?? []
+                          if (arr.includes(item)) return { ...prev, specialties: arr.filter((v: string) => v !== item) }
+                          if (arr.length >= MAX_SPECIALTIES) return prev
+                          return { ...prev, specialties: [...arr, item] }
+                        })
+                      }}
+                      disabled={!selected && atLimit}
+                      className={`px-3 py-2 rounded-xl text-xs border transition-colors ${
+                        selected
+                          ? 'bg-orange-500 text-white border-orange-500'
+                          : atLimit
+                          ? 'bg-stone-50 text-stone-300 border-stone-100 cursor-not-allowed'
+                          : 'bg-white text-gray-500 border-stone-200 hover:border-orange-300'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-gray-400 mt-2">{(form.specialties ?? []).length}/{MAX_SPECIALTIES}つ選択中</p>
             </div>
 
             {/* 会話スタイル */}

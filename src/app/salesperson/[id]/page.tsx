@@ -282,10 +282,20 @@ export default function SalespersonDetail() {
             )}
             {(agent.specialty_styles ?? []).length > 0 && (
               <div>
-                <p className="text-xs text-gray-400 mb-2">得意分野</p>
+                <p className="text-xs text-gray-400 mb-2">カテゴリ</p>
                 <div className="flex flex-wrap gap-2">
                   {agent.specialty_styles.map((s: string) => (
                     <span key={s} className="text-sm bg-orange-50 text-orange-500 px-3 py-1 rounded-full border border-orange-100">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(agent.specialties ?? []).length > 0 && (
+              <div>
+                <p className="text-xs text-gray-400 mb-2">得意分野（本人選択）</p>
+                <div className="flex flex-wrap gap-2">
+                  {agent.specialties.map((s: string) => (
+                    <span key={s} className="text-xs bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-200">{s}</span>
                   ))}
                 </div>
               </div>

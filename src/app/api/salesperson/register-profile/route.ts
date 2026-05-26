@@ -4,6 +4,14 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const OTHER_COMPANY_ID = '__other__'
 
+const ALLOWED_SPECIALTIES = [
+  '資金計画の相談', '住宅ローンの相談', '土地探しからの家づくり', '土地の注意点整理',
+  '間取り要望の整理', '家事動線・生活動線の相談', '収納計画の相談', '子育て世帯の住まい相談',
+  '共働き世帯の住まい相談', '平屋の相談', '二世帯住宅の相談', '断熱・省エネ住宅の説明',
+  '耐震性能の説明', '外観・内装デザインの相談', '設備・仕様選びの相談', '見積内容の説明',
+  '契約前の不安整理', '他社比較中の判断整理', '打合せ内容の整理', '引渡し後のフォロー',
+]
+
 export async function POST(request: NextRequest) {
   const cookieStore = await cookies()
 
@@ -43,6 +51,7 @@ export async function POST(request: NextRequest) {
     qualifications,
     sales_styles,
     bio,
+    specialties: rawSpecialties,
   } = body
 
   const familyName = typeof family_name === 'string' ? family_name.trim() : ''
@@ -61,6 +70,17 @@ export async function POST(request: NextRequest) {
   const qualificationList = Array.isArray(qualifications)
     ? qualifications.filter((v): v is string => typeof v === 'string')
     : []
+
+  const specialtiesList = Array.isArray(rawSpecialties)
+    ? rawSpecialties.filter((v): v is string => typeof v === 'string')
+    : []
+  if (specialtiesList.length > 5) {
+    return NextResponse.json({ error: '得意分野は最大5つまで選択できます' }, { status: 400 })
+  }
+  const invalidSpecialty = specialtiesList.find((v) => !ALLOWED_SPECIALTIES.includes(v))
+  if (invalidSpecialty) {
+    return NextResponse.json({ error: '無効な得意分野が含まれています' }, { status: 400 })
+  }
 
   const salesStyles: Record<string, number> =
     sales_styles !== null &&
@@ -125,6 +145,7 @@ export async function POST(request: NextRequest) {
     qualifications: qualificationList,
     sales_styles: salesStyles,
     bio: (typeof bio === 'string' ? bio.trim() : null) || null,
+    specialties: specialtiesList,
     status: isAutoApproved ? 'active' : 'pending',
     is_verified: isAutoApproved,
   }

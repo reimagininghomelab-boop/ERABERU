@@ -21,6 +21,16 @@ const QUALIFICATION_OPTIONS = [
   'インテリアコーディネーター', 'リフォームスタイリスト',
 ]
 
+const SPECIALTY_OPTIONS = [
+  '資金計画の相談', '住宅ローンの相談', '土地探しからの家づくり', '土地の注意点整理',
+  '間取り要望の整理', '家事動線・生活動線の相談', '収納計画の相談', '子育て世帯の住まい相談',
+  '共働き世帯の住まい相談', '平屋の相談', '二世帯住宅の相談', '断熱・省エネ住宅の説明',
+  '耐震性能の説明', '外観・内装デザインの相談', '設備・仕様選びの相談', '見積内容の説明',
+  '契約前の不安整理', '他社比較中の判断整理', '打合せ内容の整理', '引渡し後のフォロー',
+]
+
+const MAX_SPECIALTIES = 5
+
 const SALES_STYLE_AXES = [
   { key: 'listening_proposing', left: '傾聴型', right: '提案型' },
   { key: 'numbers_feeling', left: '数字で説明', right: '感覚で説明' },
@@ -57,6 +67,8 @@ export default function SalespersonRegisterPage() {
   const [coreCity, setCoreCity] = useState('')
   const [availablePrefectures, setAvailablePrefectures] = useState<string[]>([])
   const [qualifications, setQualifications] = useState<string[]>([])
+  const [specialties, setSpecialties] = useState<string[]>([])
+  const [specialtiesError, setSpecialtiesError] = useState('')
   const [salesStyles, setSalesStyles] = useState<Record<string, number>>({
     listening_proposing: 3,
     numbers_feeling: 3,
@@ -71,7 +83,7 @@ export default function SalespersonRegisterPage() {
 
     const { data: profile } = await supabase
       .from('salesperson_profiles')
-      .select('id, status, company_id, application_company_name, family_name, given_name, department, core_city, available_prefectures, qualifications, sales_styles, bio')
+      .select('id, status, company_id, application_company_name, family_name, given_name, department, core_city, available_prefectures, qualifications, specialties, sales_styles, bio')
       .eq('user_id', userId)
       .maybeSingle()
 
@@ -89,6 +101,7 @@ export default function SalespersonRegisterPage() {
       if (profile.core_city) setCoreCity(profile.core_city as string)
       if (profile.available_prefectures) setAvailablePrefectures(profile.available_prefectures as string[])
       if (profile.qualifications) setQualifications(profile.qualifications as string[])
+      if (profile.specialties) setSpecialties(profile.specialties as string[])
       if (profile.sales_styles) setSalesStyles(profile.sales_styles as Record<string, number>)
       if (profile.bio) setBio(profile.bio as string)
 
@@ -165,6 +178,17 @@ export default function SalespersonRegisterPage() {
     )
   }
 
+  const toggleSpecialty = (item: string) => {
+    setSpecialtiesError('')
+    if (specialties.includes(item)) {
+      setSpecialties(specialties.filter((x) => x !== item))
+    } else if (specialties.length >= MAX_SPECIALTIES) {
+      setSpecialtiesError(`得意分野は最大${MAX_SPECIALTIES}つまで選択できます。`)
+    } else {
+      setSpecialties([...specialties, item])
+    }
+  }
+
   const handleAccountSubmit = async () => {
     setStep1Error('')
     if (!selectedCompanyId) { setStep1Error('会社を選択してください'); return }
@@ -225,6 +249,7 @@ export default function SalespersonRegisterPage() {
           core_city: coreCity || null,
           available_prefectures: availablePrefectures,
           qualifications,
+          specialties,
           sales_styles: salesStyles,
           bio: bio || null,
         }),
@@ -521,6 +546,43 @@ export default function SalespersonRegisterPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* 得意分野 */}
+            <div className="bg-white rounded-2xl shadow-sm p-6">
+              <h2 className="font-bold text-stone-700 mb-1">得意分野</h2>
+              <p className="text-xs text-stone-400 mb-4">
+                ご自身が特に相談に乗りやすい分野を選択してください。最大{MAX_SPECIALTIES}つまで選択できます。
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {SPECIALTY_OPTIONS.map((item) => {
+                  const selected = specialties.includes(item)
+                  const disabled = !selected && specialties.length >= MAX_SPECIALTIES
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => toggleSpecialty(item)}
+                      disabled={disabled}
+                      className={`px-3 py-2 rounded-xl text-xs border transition-colors ${
+                        selected
+                          ? 'bg-orange-500 text-white border-orange-500'
+                          : disabled
+                          ? 'bg-stone-50 text-stone-300 border-stone-100 cursor-not-allowed'
+                          : 'bg-white text-stone-600 border-stone-200 hover:border-orange-300'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="flex items-center justify-between mt-3">
+                <p className="text-xs text-stone-400">{specialties.length}/{MAX_SPECIALTIES}つ選択中</p>
+                {specialtiesError && (
+                  <p className="text-xs text-red-500">{specialtiesError}</p>
+                )}
               </div>
             </div>
 
