@@ -1,11 +1,13 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { QRCodeSVG } from 'qrcode.react'
 import { MUNICIPALITIES, PREFECTURES } from '@/lib/municipalities'
+import Cropper from 'react-easy-crop'
+import type { Area } from 'react-easy-crop'
 
 type Tab = 'reviews' | 'settings' | 'preview'
 
@@ -53,9 +55,13 @@ export default function SalespersonDashboard() {
   const [qualInput, setQualInput] = useState('')
   const [corePrefecture, setCorePrefecture] = useState('')
 
-  // image upload
+  // image upload & crop
   const [imageUploading, setImageUploading] = useState(false)
   const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -134,19 +140,59 @@ export default function SalespersonDashboard() {
     }
   }
 
-  const handleImageUpload = async (file: File) => {
+  const onCropComplete = useCallback((_: Area, areaPixels: Area) => {
+    setCroppedAreaPixels(areaPixels)
+  }, [])
+
+  const getCroppedBlob = (src: string, area: Area, maxBytes: number): Promise<Blob> =>
+    new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const SIZE = 400
+        canvas.width = SIZE
+        canvas.height = SIZE
+        canvas.getContext('2d')!.drawImage(img, area.x, area.y, area.width, area.height, 0, 0, SIZE, SIZE)
+        let quality = 0.85
+        const tryExport = () => {
+          canvas.toBlob((blob) => {
+            if (!blob) return reject(new Error('変換失敗'))
+            if (blob.size <= maxBytes || quality <= 0.3) return resolve(blob)
+            quality -= 0.1
+            tryExport()
+          }, 'image/jpeg', quality)
+        }
+        tryExport()
+      }
+      img.onerror = reject
+      img.src = src
+    })
+
+  const handleFileSelect = (file: File) => {
+    const url = URL.createObjectURL(file)
+    setCropSrc(url)
+    setCrop({ x: 0, y: 0 })
+    setZoom(1)
+  }
+
+  const handleCropConfirm = async () => {
+    if (!cropSrc || !croppedAreaPixels) return
     setImageUploading(true)
+    setCropSrc(null)
+
+    const blob = await getCroppedBlob(cropSrc, croppedAreaPixels, 524288).catch(() => null)
+    URL.revokeObjectURL(cropSrc)
+    if (!blob) { setImageUploading(false); return }
+
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setImageUploading(false); return }
 
-    const ext = file.name.split('.').pop()
-    const path = `${user.id}/avatar.${ext}`
-    const { error: uploadError } = await supabase.storage
+    const path = `${user.id}/avatar.jpg`
+    const { error } = await supabase.storage
       .from('profile-images')
-      .upload(path, file, { upsert: true })
-
-    if (uploadError) { setImageUploading(false); return }
+      .upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
+    if (error) { setImageUploading(false); return }
 
     const { data: { publicUrl } } = supabase.storage.from('profile-images').getPublicUrl(path)
     await supabase.from('salesperson_profiles').update({ profile_image_url: publicUrl }).eq('id', profile.id)
@@ -376,7 +422,7 @@ export default function SalespersonDashboard() {
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
                     className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f) }}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); e.target.value = '' }}
                   />
                 </label>
               </div>
@@ -684,6 +730,53 @@ export default function SalespersonDashboard() {
         )}
 
       </div>
+
+      {/* トリミングモーダル */}
+      {cropSrc && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex flex-col">
+          <div className="relative flex-1">
+            <Cropper
+              image={cropSrc}
+              crop={crop}
+              zoom={zoom}
+              aspect={1}
+              cropShape="round"
+              showGrid={false}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={onCropComplete}
+            />
+          </div>
+          <div className="bg-gray-900 px-6 py-5 space-y-3">
+            <div className="flex items-center gap-3">
+              <span className="text-white text-xs shrink-0">拡大</span>
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.05}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="flex-1 accent-orange-500"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setCropSrc(null); URL.revokeObjectURL(cropSrc) }}
+                className="flex-1 border border-gray-600 text-gray-300 font-medium py-3 rounded-xl text-sm"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleCropConfirm}
+                className="flex-1 bg-orange-500 hover:bg-orange-400 text-white font-bold py-3 rounded-xl text-sm"
+              >
+                この範囲で登録する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
