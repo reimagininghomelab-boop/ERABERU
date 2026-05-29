@@ -56,7 +56,6 @@ export default function SalespersonDashboard() {
   const [saveMsg, setSaveMsg] = useState('')
 
   // tag input helpers
-  const [specialtyInput, setSpecialtyInput] = useState('')
   const [qualInput, setQualInput] = useState('')
   const [corePrefecture, setCorePrefecture] = useState('')
 
@@ -570,21 +569,6 @@ export default function SalespersonDashboard() {
                   </button>
                 ))}
               </div>
-              <div className="flex gap-2">
-                <input
-                  value={specialtyInput}
-                  onChange={(e) => setSpecialtyInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { addCustomTag('specialty_styles', specialtyInput); setSpecialtyInput('') } }}
-                  className="flex-1 border border-stone-200 rounded-xl px-3 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
-                  placeholder="その他を入力してEnter"
-                />
-              </div>
-              {(form.specialty_styles ?? []).filter((s: string) => !SPECIALTY_OPTIONS.includes(s)).map((s: string) => (
-                <span key={s} className="inline-flex items-center gap-1 text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full mt-1 mr-1">
-                  {s}
-                  <button onClick={() => toggleTag('specialty_styles', s)} className="ml-0.5 hover:text-red-500">×</button>
-                </span>
-              ))}
             </div>
 
             {/* 所持資格 */}
