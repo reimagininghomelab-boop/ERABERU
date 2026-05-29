@@ -380,7 +380,7 @@ export default function SalespersonDashboard() {
                   />
                 </label>
               </div>
-              <p className="text-xs text-gray-400 mt-1.5">JPG・PNG・WebP、2MB以内</p>
+              <p className="text-xs text-gray-400 mt-1.5">JPG・PNG・WebP、500KB以内</p>
             </div>
 
             {/* 氏名 */}
