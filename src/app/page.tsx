@@ -169,7 +169,7 @@ export default function Home() {
               {/* アイコン＋認証バッジ */}
               <div className="flex items-start justify-between mb-4">
                 <div className="w-14 h-14 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center text-2xl shrink-0">
-                  {agent.profile_image_url
+                  {unlockedMap[agent.id] && agent.profile_image_url
                     ? <img src={agent.profile_image_url} alt="" className="w-full h-full object-cover" />
                     : '👤'}
                 </div>
