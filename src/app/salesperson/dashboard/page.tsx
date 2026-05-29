@@ -576,7 +576,7 @@ export default function SalespersonDashboard() {
                       <input
                         type="range"
                         min={1}
-                        max={5}
+                        max={6}
                         value={val}
                         onChange={(e) => setForm((p: any) => ({
                           ...p,

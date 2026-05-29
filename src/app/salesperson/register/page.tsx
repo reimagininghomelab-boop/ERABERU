@@ -146,7 +146,7 @@ export default function SalespersonRegisterPage() {
       if (data) setCompanies(data as Company[])
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         const metadata = session.user.user_metadata as UserMetadata | undefined
         checkSession(session.user.id, metadata)
@@ -520,7 +520,7 @@ export default function SalespersonRegisterPage() {
             {/* 会話スタイル */}
             <div className="bg-white rounded-2xl shadow-sm p-6">
               <h2 className="font-bold text-stone-700 mb-1">会話スタイル</h2>
-              <p className="text-xs text-stone-400 mb-5">あなたの営業スタイルを5段階で教えてください</p>
+              <p className="text-xs text-stone-400 mb-5">あなたの営業スタイルを6段階で教えてください</p>
               <div className="space-y-6">
                 {SALES_STYLE_AXES.map(({ key, left, right }) => (
                   <div key={key}>
@@ -529,7 +529,7 @@ export default function SalespersonRegisterPage() {
                       <span>{right}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {[1, 2, 3, 4, 5].map((val) => (
+                      {[1, 2, 3, 4, 5, 6].map((val) => (
                         <button
                           key={val}
                           type="button"
