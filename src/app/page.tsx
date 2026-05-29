@@ -175,9 +175,6 @@ export default function Home() {
                   {unlockedMap[agent.id] && (
                     <span className="text-xs bg-green-100 text-green-700 font-medium px-2 py-1 rounded-full">🔓 開示済み</span>
                   )}
-                  {agent.is_verified && (
-                    <span className="text-xs bg-blue-100 text-blue-600 font-medium px-2 py-1 rounded-full">✓ 本人確認済み</span>
-                  )}
                 </div>
               </div>
 
