@@ -23,7 +23,12 @@ const SALES_STYLE_AXES = [
   { key: 'numbers_feeling', left: '数字で説明', right: '感覚で説明' },
 ]
 
-const SPECIALTY_OPTIONS = ['注文住宅', '規格住宅', '土地探し', '省エネ・ZEH', '資金計画', 'リフォーム', '建売', 'マンション']
+const SPECIALTY_OPTIONS = [
+  '自由設計', '規格住宅', 'セミオーダー',
+  '平屋', '二世帯住宅', '狭小住宅',
+  '高断熱・高気密', '省エネ・ZEH', 'デザイン住宅',
+  '土地探し', '資金計画', 'リフォーム・リノベ',
+]
 
 const SPECIALTIES_OPTIONS = [
   '資金計画の相談', '住宅ローンの相談', '土地探しからの家づくり', '土地の注意点整理',
