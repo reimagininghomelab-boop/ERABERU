@@ -53,6 +53,10 @@ export default function SalespersonDashboard() {
   const [qualInput, setQualInput] = useState('')
   const [corePrefecture, setCorePrefecture] = useState('')
 
+  // image upload
+  const [imageUploading, setImageUploading] = useState(false)
+  const [imageUrl, setImageUrl] = useState<string | null>(null)
+
   useEffect(() => {
     const supabase = createClient()
     const load = async () => {
@@ -67,6 +71,7 @@ export default function SalespersonDashboard() {
       if (!own) { router.replace('/'); return }
 
       setProfile(own)
+      setImageUrl(own.profile_image_url ?? null)
       setQrToken(own.qr_token ?? '')
       const coreCity = own.core_city ?? ''
       setForm({
@@ -127,6 +132,26 @@ export default function SalespersonDashboard() {
     if (!error) {
       setAnonReviews((prev) => prev.map((r) => r.id === id ? { ...r, status: newStatus } : r))
     }
+  }
+
+  const handleImageUpload = async (file: File) => {
+    setImageUploading(true)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setImageUploading(false); return }
+
+    const ext = file.name.split('.').pop()
+    const path = `${user.id}/avatar.${ext}`
+    const { error: uploadError } = await supabase.storage
+      .from('profile-images')
+      .upload(path, file, { upsert: true })
+
+    if (uploadError) { setImageUploading(false); return }
+
+    const { data: { publicUrl } } = supabase.storage.from('profile-images').getPublicUrl(path)
+    await supabase.from('salesperson_profiles').update({ profile_image_url: publicUrl }).eq('id', profile.id)
+    setImageUrl(publicUrl)
+    setImageUploading(false)
   }
 
   const handleSaveSettings = async () => {
@@ -335,6 +360,28 @@ export default function SalespersonDashboard() {
         {/* ===== プロフィール設定タブ ===== */}
         {tab === 'settings' && (
           <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6 space-y-6">
+
+            {/* 顔写真 */}
+            <div>
+              <label className="text-xs text-gray-500 mb-2 block">顔写真</label>
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center text-3xl shrink-0">
+                  {imageUrl
+                    ? <img src={imageUrl} alt="プロフィール" className="w-full h-full object-cover" />
+                    : '👤'}
+                </div>
+                <label className={`cursor-pointer text-sm border border-stone-300 text-gray-600 hover:bg-stone-100 font-medium px-4 py-2 rounded-xl transition ${imageUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {imageUploading ? 'アップロード中...' : '写真を選択'}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f) }}
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5">JPG・PNG・WebP、2MB以内</p>
+            </div>
 
             {/* 氏名 */}
             <div className="grid grid-cols-2 gap-3">

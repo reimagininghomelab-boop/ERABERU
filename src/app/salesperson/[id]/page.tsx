@@ -233,8 +233,10 @@ export default function SalespersonDetail() {
         {/* プロフィールカード */}
         <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-8">
           <div className="flex items-start justify-between mb-6">
-            <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center text-4xl">
-              👤
+            <div className="w-20 h-20 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center text-4xl shrink-0">
+              {agent.profile_image_url
+                ? <img src={agent.profile_image_url} alt="" className="w-full h-full object-cover" />
+                : '👤'}
             </div>
             <div className="flex flex-col items-end gap-2">
               {agent.is_verified && (

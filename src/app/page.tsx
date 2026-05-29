@@ -163,13 +163,15 @@ export default function Home() {
 
         {/* カード一覧 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredAgents.map((agent, index) => (
+          {filteredAgents.map((agent) => (
             <div key={agent.id} className={`rounded-2xl shadow-sm border p-6 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 ${unlockedMap[agent.id] ? 'bg-green-100 border-green-400' : 'bg-stone-50 border-stone-200'}`}>
 
               {/* アイコン＋認証バッジ */}
               <div className="flex items-start justify-between mb-4">
-                <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center text-2xl">
-                  👤
+                <div className="w-14 h-14 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center text-2xl shrink-0">
+                  {agent.profile_image_url
+                    ? <img src={agent.profile_image_url} alt="" className="w-full h-full object-cover" />
+                    : '👤'}
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   {unlockedMap[agent.id] && (
