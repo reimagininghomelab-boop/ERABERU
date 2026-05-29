@@ -184,7 +184,7 @@ export default function Home() {
               {/* 会社名・匿名ラベル */}
               <p className="text-xs text-gray-400 mb-0.5">{agent.company_name}</p>
               <h3 className="text-lg font-bold text-gray-800 mb-3">
-                {unlockedMap[agent.id]?.real_name ?? `営業マン ${String.fromCharCode(65 + index)}`}
+                {unlockedMap[agent.id]?.real_name ?? (agent.name_initials ? `${agent.name_initials} さん` : '---')}
               </h3>
 
               {/* エリア */}
