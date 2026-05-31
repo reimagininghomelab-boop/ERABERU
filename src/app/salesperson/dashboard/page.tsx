@@ -214,6 +214,7 @@ export default function SalespersonDashboard() {
       company_name: form.company_name || null,
       department: form.department || null,
       bio: form.bio || null,
+      area_prefecture: corePrefecture || null,
       core_city: form.core_city || null,
       contract_count: form.contract_count !== '' ? Number(form.contract_count) : null,
       specialty_styles: form.specialty_styles,
