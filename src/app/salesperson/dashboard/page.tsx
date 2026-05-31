@@ -226,6 +226,9 @@ export default function SalespersonDashboard() {
     setSaving(false)
     setSaveMsg(error ? '保存に失敗しました' : '保存しました')
     setTimeout(() => setSaveMsg(''), 3000)
+    if (!error) {
+      fetch('/api/ai/generate-own-intro', { method: 'POST' }).catch(() => {})
+    }
   }
 
   const toggleTag = (field: 'specialty_styles' | 'qualifications' | 'available_prefectures', value: string) => {
