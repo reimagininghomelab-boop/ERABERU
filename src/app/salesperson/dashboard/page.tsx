@@ -54,6 +54,7 @@ export default function SalespersonDashboard() {
   const [form, setForm] = useState<any>({})
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
+  const [aiMsg, setAiMsg] = useState('')
 
   // tag input helpers
   const [qualInput, setQualInput] = useState('')
@@ -227,7 +228,15 @@ export default function SalespersonDashboard() {
     setSaveMsg(error ? '保存に失敗しました' : '保存しました')
     setTimeout(() => setSaveMsg(''), 3000)
     if (!error) {
-      fetch('/api/ai/generate-own-intro', { method: 'POST' }).catch(() => {})
+      setAiMsg('AI紹介文を更新中...')
+      fetch('/api/ai/generate-own-intro', { method: 'POST' })
+        .then(async (res) => {
+          const json = await res.json()
+          if (!res.ok) setAiMsg(`AI生成エラー: ${json.error ?? res.status}`)
+          else setAiMsg('AI紹介文を更新しました')
+          setTimeout(() => setAiMsg(''), 5000)
+        })
+        .catch((e) => { setAiMsg(`AI生成エラー: ${e.message}`); setTimeout(() => setAiMsg(''), 5000) })
     }
   }
 
@@ -690,6 +699,11 @@ export default function SalespersonDashboard() {
               >
                 {saving ? '保存中...' : '変更を保存する'}
               </button>
+              {aiMsg && (
+                <p className={`text-xs mt-2 ${aiMsg.includes('エラー') ? 'text-red-500' : 'text-gray-400'}`}>
+                  {aiMsg}
+                </p>
+              )}
             </div>
           </div>
         )}
