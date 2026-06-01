@@ -17,7 +17,6 @@ const PHASE_LABELS: Record<string, string> = {
   after_handover: '引渡後',
 }
 
-// レビュー本文から多い声キーワードを抽出
 const KEYWORD_PATTERNS = [
   { label: '説明がわかりやすい', re: /わかりやす|説明.*丁寧|丁寧.*説明/ },
   { label: '話をよく聞いてくれる', re: /聞いてくれ|ヒアリング|話を聞/ },
@@ -51,16 +50,126 @@ function formatMatchCopy(text: string): string {
   return text
 }
 
+// ===== ログインゲートモーダル =====
+function LoginGateModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-teal-500">🔒</span>
+          <h3 className="text-base font-bold text-gray-800">ログインが必要です</h3>
+        </div>
+        <p className="text-sm text-gray-600 leading-relaxed mb-2">
+          名前・顔写真・連絡先など、営業個人が特定できる情報の開示にはログインが必要です。
+        </p>
+        <p className="text-xs text-gray-400 leading-relaxed mb-5">
+          これは営業個人の情報を保護し、開示履歴を正しく管理するためです。
+          検索や口コミ傾向の確認は、登録なしでご利用いただけます。
+        </p>
+        <div className="space-y-2">
+          <Link
+            href="/auth/login"
+            className="block w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-3 rounded-xl text-sm text-center transition"
+          >
+            ログインして開示する
+          </Link>
+          <Link
+            href="/auth/login?mode=signup"
+            className="block w-full border border-teal-200 text-teal-600 font-semibold py-3 rounded-xl text-sm text-center hover:bg-teal-50 transition"
+          >
+            無料登録する
+          </Link>
+          <button
+            onClick={onClose}
+            className="w-full text-gray-400 hover:text-gray-600 py-2 text-sm transition"
+          >
+            戻る
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ===== AI相談検索モーダル =====
+function AiSearchModal({
+  onClose,
+  onSearch,
+}: {
+  onClose: () => void
+  onSearch: (query: string) => void
+}) {
+  const [query, setQuery] = useState('')
+
+  const handleSubmit = (e: { preventDefault: () => void }) => {
+    e.preventDefault()
+    if (!query.trim()) return
+    onSearch(query.trim())
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-xl">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-lg">✨</span>
+          <h3 className="text-base font-bold text-gray-800">AIに相談して探す</h3>
+        </div>
+        <p className="text-xs text-gray-400 mb-4">
+          希望や不安を自由に書いてください。入力内容をもとに営業候補を絞り込みます。
+        </p>
+        <form onSubmit={handleSubmit}>
+          <textarea
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="例：土地探しから一緒に動いてくれる営業が良い。押し売りが苦手なので、じっくり話を聞いてくれる方を探しています。"
+            className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-stone-50 focus:outline-none focus:ring-2 focus:ring-teal-200 resize-none h-28"
+            autoFocus
+          />
+          <div className="mt-3 flex gap-2">
+            <button
+              type="submit"
+              disabled={!query.trim()}
+              className="flex-1 bg-teal-500 hover:bg-teal-400 disabled:bg-teal-200 text-white font-bold py-3 rounded-xl text-sm transition"
+            >
+              候補を探す
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 text-gray-400 hover:text-gray-600 text-sm transition"
+            >
+              キャンセル
+            </button>
+          </div>
+        </form>
+        <p className="text-xs text-gray-300 mt-3 text-center">
+          ※ 入力内容をもとにキーワード検索します
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ===== 詳細パネル（PC右カラム） =====
 function DetailPanel({
   agent,
   unlockedData,
   reviews,
   reviewsLoading,
+  onViewContact,
 }: {
   agent: any
   unlockedData: any | null
   reviews: any[]
   reviewsLoading: boolean
+  onViewContact: (agentId: string) => void
 }) {
   const ai = (agent.ai_summary ?? null) as AISummary | null
   const salesStyles = (agent.sales_styles ?? {}) as Record<string, number>
@@ -89,7 +198,7 @@ function DetailPanel({
   return (
     <div className="space-y-4 pr-1">
 
-      {/* 1. 基本情報＋相性コピー＋補足文 */}
+      {/* 1. 基本情報 */}
       <div className="bg-white rounded-2xl border border-stone-200 p-6">
         <div className="flex items-start gap-4">
           <div className="w-20 h-20 rounded-full overflow-hidden bg-stone-100 flex items-center justify-center shrink-0">
@@ -106,6 +215,11 @@ function DetailPanel({
             {(agent.available_prefectures ?? []).length > 0 && (
               <p className="text-xs text-gray-400 mt-0.5">
                 対応：{(agent.available_prefectures as string[]).join('・')}
+              </p>
+            )}
+            {!unlockedData && (
+              <p className="text-xs text-stone-400 mt-1.5">
+                🔒 氏名・顔写真・連絡先は開示後に表示
               </p>
             )}
           </div>
@@ -142,7 +256,7 @@ function DetailPanel({
       {ai?.summary && (
         <div className="bg-white rounded-2xl border border-stone-200 p-5">
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-green-500 text-sm">✨</span>
+            <span className="text-teal-500 text-sm">✨</span>
             <p className="text-sm font-bold text-gray-700">AI紹介文</p>
           </div>
           <p className="text-sm text-gray-700 leading-relaxed">{ai.summary}</p>
@@ -150,7 +264,7 @@ function DetailPanel({
         </div>
       )}
 
-      {/* 3. この方はこんな方に合いそう（控えめ） */}
+      {/* 3. こんな方に合いそう */}
       {ai?.goodMatch && ai.goodMatch.length > 0 && (
         <div className="rounded-xl border border-amber-100 bg-amber-50/70 px-4 py-3">
           <p className="text-xs font-bold text-amber-700 mb-2">この方はこんな方に合いそう</p>
@@ -179,9 +293,8 @@ function DetailPanel({
         </div>
       )}
 
-      {/* 5. 口コミ・お客様の声（星評価なし） */}
+      {/* 5. 口コミ・お客様の声 */}
       <div className="bg-white rounded-2xl border border-stone-200 p-5">
-        {/* ヘッダー：件数＋直近時期 */}
         <div className="flex items-baseline gap-3 mb-4">
           <p className="text-sm font-bold text-gray-700">口コミ・お客様の声</p>
           {!reviewsLoading && reviews.length > 0 && (
@@ -198,7 +311,6 @@ function DetailPanel({
           <p className="text-sm text-gray-400">まだ口コミはありません</p>
         ) : (
           <>
-            {/* 口コミで多い声 */}
             {reviewKeywords.length > 0 && (
               <div className="mb-4">
                 <p className="text-xs text-gray-400 mb-2">口コミで多い声</p>
@@ -211,8 +323,6 @@ function DetailPanel({
                 </div>
               </div>
             )}
-
-            {/* 代表的な口コミ本文（フェーズラベル付き、星なし） */}
             <div className="space-y-3">
               {reviews.slice(0, 4).map((r) => (
                 <div key={r.id} className="bg-stone-50 rounded-xl p-4 border border-stone-100">
@@ -254,28 +364,40 @@ function DetailPanel({
         </div>
       )}
 
-      {/* 7. CTA（ソフトな白背景） */}
-      <div className="bg-green-50 rounded-2xl border border-green-100 p-6">
+      {/* 7. CTA */}
+      <div className="bg-teal-50 rounded-2xl border border-teal-100 p-6">
         <p className="text-sm font-semibold text-gray-700 mb-1">
-          {displayName}に相談してみる
+          {displayName}のプロフィールを確認する
         </p>
         <p className="text-xs text-gray-500 mb-4">
-          口コミ詳細・実名はオファー後にご確認いただけます
+          口コミ全文・提案スタイルの詳細はプロフィールページでご覧いただけます
         </p>
-        <Link
-          href={`/salesperson/${agent.id}`}
-          className="block w-full bg-orange-500 hover:bg-orange-400 text-white font-bold py-3.5 rounded-xl transition text-center text-sm"
-        >
-          詳細を見る・オファーする
-        </Link>
+        <div className="space-y-2">
+          <Link
+            href={`/salesperson/${agent.id}`}
+            className="block w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-3.5 rounded-xl transition text-center text-sm"
+          >
+            詳しく見る
+          </Link>
+          {!unlockedData && (
+            <button
+              onClick={() => onViewContact(agent.id)}
+              className="block w-full bg-orange-500 hover:bg-orange-400 text-white font-bold py-3 rounded-xl transition text-sm"
+            >
+              名前・連絡先を見る
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
 }
 
+// ===== メインページ =====
 export default function Home() {
   const router = useRouter()
   const [checking, setChecking] = useState(true)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [agents, setAgents] = useState<any[]>([])
   const [unlockedMap, setUnlockedMap] = useState<Record<string, any>>({})
   const [keyword, setKeyword] = useState('')
@@ -286,9 +408,30 @@ export default function Home() {
   const [selectedReviews, setSelectedReviews] = useState<any[]>([])
   const [reviewsLoading, setReviewsLoading] = useState(false)
   const [detailVisible, setDetailVisible] = useState(false)
+  const [showAiModal, setShowAiModal] = useState(false)
+  const [showLoginGate, setShowLoginGate] = useState(false)
+  const [showAbout, setShowAbout] = useState(false)
 
   const selectedIdRef = useRef(selectedId)
   selectedIdRef.current = selectedId
+  const searchRef = useRef<HTMLDivElement>(null)
+
+  const scrollToSearch = () => {
+    searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const handleAiSearch = (query: string) => {
+    setKeyword(query)
+    scrollToSearch()
+  }
+
+  const handleViewContact = (agentId: string) => {
+    if (!isLoggedIn) {
+      setShowLoginGate(true)
+    } else {
+      router.push(`/salesperson/${agentId}`)
+    }
+  }
 
   const fetchReviewsForAgent = useCallback(async (agentId: string) => {
     setReviewsLoading(true)
@@ -330,6 +473,7 @@ export default function Home() {
       const { data: { user } } = await supabase.auth.getUser()
 
       if (user) {
+        setIsLoggedIn(true)
         const { data: ownProfile } = await supabase
           .from('salesperson_profiles')
           .select('id')
@@ -387,7 +531,14 @@ export default function Home() {
       if (kw) {
         const name = (unlockedMap[a.id]?.real_name ?? '').toLowerCase()
         const company = (a.company_name ?? '').toLowerCase()
-        if (!name.includes(kw) && !company.includes(kw)) return false
+        const bio = (a.bio ?? '').toLowerCase()
+        const specialtyText = (a.specialty_styles ?? []).join(' ').toLowerCase()
+        if (
+          !name.includes(kw) &&
+          !company.includes(kw) &&
+          !bio.includes(kw) &&
+          !specialtyText.includes(kw)
+        ) return false
       }
       if (filterPrefecture && a.area_prefecture !== filterPrefecture) return false
       if (filterSpecialty && !(a.specialty_styles ?? []).includes(filterSpecialty)) return false
@@ -418,85 +569,146 @@ export default function Home() {
 
   const selectedAgent = selectedId ? (agents.find((a) => a.id === selectedId) ?? null) : null
 
-  // 右パネルstickyヘッダー用のdisplayName
   const stickyDisplayName = selectedAgent
     ? (unlockedMap[selectedAgent.id]
         ? (unlockedMap[selectedAgent.id].real_name ?? (selectedAgent.name_initials ? `${selectedAgent.name_initials} さん` : '---'))
         : (selectedAgent.name_initials ? `${selectedAgent.name_initials} さん` : '---'))
     : ''
 
+  const hasFilter = !!(keyword || filterPrefecture || filterSpecialty || filterQualification)
+
   return (
     <main className="min-h-screen bg-stone-50">
       <Header />
 
-      {/* Hero */}
-      <div className="bg-gray-900 px-6 py-6">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-2xl md:text-3xl font-bold text-white mb-1.5">
-            誠実な営業マンを、<br className="sm:hidden" />あなたが選ぶ。
-          </h2>
-          <p className="text-gray-400 text-sm">
-            住宅営業マンのリアルな評価を確認して、信頼できる一人に指名しよう。
+      {/* ===== ヒーロー ===== */}
+      <section className="bg-gradient-to-b from-teal-700 to-teal-600 px-6 py-10 md:py-14">
+        <div className="max-w-2xl mx-auto text-center">
+          <h1 className="text-2xl md:text-4xl font-black text-white leading-snug mb-4">
+            あなたが住宅営業を選ぶ。<br />
+            口コミと相性からERABERU
+          </h1>
+          <p className="text-teal-100 text-sm md:text-base leading-relaxed mb-8 max-w-xl mx-auto">
+            ERABERUは、住宅会社や条件だけでなく、実際の口コミや対応スタイルをもとに、
+            家づくりを安心して相談できる営業を探せるサービスです。
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              onClick={scrollToSearch}
+              className="w-full sm:w-auto bg-white text-teal-700 font-bold px-7 py-3.5 rounded-xl hover:bg-teal-50 transition text-sm shadow-md"
+            >
+              条件で探す
+            </button>
+            <button
+              onClick={() => setShowAiModal(true)}
+              className="w-full sm:w-auto bg-orange-500 hover:bg-orange-400 text-white font-bold px-7 py-3.5 rounded-xl transition text-sm shadow-md"
+            >
+              AIに相談して探す
+            </button>
+          </div>
+          <p className="text-teal-200 text-xs mt-4">
+            条件が決まっている方は条件検索へ。まだ迷っている方は、AIに相談しながら営業候補を整理できます。
           </p>
         </div>
+      </section>
+
+      {/* ===== 検索方法カード ===== */}
+      <section id="ai-search" className="max-w-6xl mx-auto px-4 md:px-6 py-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* カード1: 条件で探す */}
+          <div className="bg-white rounded-2xl border border-stone-200 p-6 hover:shadow-sm transition-shadow">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-8 h-8 bg-teal-100 rounded-lg flex items-center justify-center text-teal-600 text-sm font-bold">🔍</span>
+              <h2 className="text-base font-bold text-gray-800">条件で探す</h2>
+            </div>
+            <p className="text-sm text-gray-600 leading-relaxed mb-5">
+              エリア・会社名・得意分野・キーワードなど、探したい条件が決まっている方におすすめです。
+            </p>
+            <button
+              onClick={scrollToSearch}
+              className="w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-3 rounded-xl text-sm transition"
+            >
+              条件を指定して探す
+            </button>
+          </div>
+
+          {/* カード2: AIに相談 */}
+          <div className="bg-white rounded-2xl border border-stone-200 p-6 hover:shadow-sm transition-shadow">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center text-orange-500 text-sm font-bold">✨</span>
+              <h2 className="text-base font-bold text-gray-800">AIに相談して探す</h2>
+            </div>
+            <p className="text-sm text-gray-600 leading-relaxed mb-5">
+              家づくりの希望や不安を話しながら、相性の良さそうな営業候補を一緒に整理します。
+            </p>
+            <button
+              onClick={() => setShowAiModal(true)}
+              className="w-full bg-orange-500 hover:bg-orange-400 text-white font-bold py-3 rounded-xl text-sm transition"
+            >
+              AIに相談して探す
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ===== 検索・絞り込みエリア ===== */}
+      <div id="search" ref={searchRef} className="max-w-6xl mx-auto px-4 md:px-6">
+        <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-3">
+          <input
+            type="text"
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="キーワード・会社名・得意分野で検索"
+            className="w-full text-sm border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 bg-white"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <select
+              value={filterPrefecture}
+              onChange={(e) => setFilterPrefecture(e.target.value)}
+              className="text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none bg-white text-gray-600"
+            >
+              <option value="">エリア（すべて）</option>
+              {prefectures.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <select
+              value={filterSpecialty}
+              onChange={(e) => setFilterSpecialty(e.target.value)}
+              className="text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none bg-white text-gray-600"
+            >
+              <option value="">得意分野（すべて）</option>
+              {specialties.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select
+              value={filterQualification}
+              onChange={(e) => setFilterQualification(e.target.value)}
+              className="text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none bg-white text-gray-600"
+            >
+              <option value="">資格（すべて）</option>
+              {qualifications.map((q) => <option key={q} value={q}>{q}</option>)}
+            </select>
+          </div>
+          {hasFilter && (
+            <button
+              onClick={() => { setKeyword(''); setFilterPrefecture(''); setFilterSpecialty(''); setFilterQualification('') }}
+              className="text-xs text-teal-600 hover:text-teal-500 transition"
+            >
+              × 絞り込みをリセット
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-gray-400 mt-2 px-1">
+          {filteredAgents.length}人の営業マンが見つかりました
+          {filteredAgents.length !== agents.length && (
+            <span className="ml-1">（全{agents.length}人中）</span>
+          )}
+        </p>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 md:px-6">
-        {/* フィルター */}
-        <div className="py-4">
-          <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-3">
-            <input
-              type="text"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              placeholder="会社名で検索"
-              className="w-full text-sm border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-green-200 bg-white"
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <select
-                value={filterPrefecture}
-                onChange={(e) => setFilterPrefecture(e.target.value)}
-                className="text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none bg-white text-gray-600"
-              >
-                <option value="">エリア（すべて）</option>
-                {prefectures.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-              <select
-                value={filterSpecialty}
-                onChange={(e) => setFilterSpecialty(e.target.value)}
-                className="text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none bg-white text-gray-600"
-              >
-                <option value="">得意分野（すべて）</option>
-                {specialties.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-              <select
-                value={filterQualification}
-                onChange={(e) => setFilterQualification(e.target.value)}
-                className="text-sm border border-stone-200 rounded-xl px-3 py-2 focus:outline-none bg-white text-gray-600"
-              >
-                <option value="">資格（すべて）</option>
-                {qualifications.map((q) => <option key={q} value={q}>{q}</option>)}
-              </select>
-            </div>
-            {(keyword || filterPrefecture || filterSpecialty || filterQualification) && (
-              <button
-                onClick={() => { setKeyword(''); setFilterPrefecture(''); setFilterSpecialty(''); setFilterQualification('') }}
-                className="text-xs text-green-600 hover:text-green-500 transition"
-              >
-                × 絞り込みをリセット
-              </button>
-            )}
-          </div>
-          <p className="text-xs text-gray-400 mt-2 px-1">
-            {filteredAgents.length}人の営業マンが見つかりました
-            {filteredAgents.length !== agents.length && (
-              <span className="ml-1">（全{agents.length}人中）</span>
-            )}
-          </p>
-        </div>
+      {/* ===== 営業カード一覧 ===== */}
+      <div className="max-w-6xl mx-auto px-4 md:px-6 mt-3">
 
         {/* PC: マスター・詳細レイアウト */}
-        <div className="hidden md:flex gap-5 h-[calc(100vh-340px)] min-h-[500px] pb-6">
+        <div className="hidden md:flex gap-5 h-[calc(100vh-380px)] min-h-[500px] pb-6">
 
           {/* 左：カード一覧（42%） */}
           <div className="w-[42%] overflow-y-auto space-y-2.5 slim-scroll">
@@ -525,8 +737,8 @@ export default function Home() {
                     onClick={() => handleSelectAgent(agent.id)}
                     className={`w-full text-left rounded-2xl border p-4 transition-all duration-200 ${
                       isSelected
-                        ? 'bg-green-50 border-green-200 shadow-sm'
-                        : 'bg-white border-stone-200 hover:border-green-200 hover:shadow-sm'
+                        ? 'bg-teal-50 border-teal-200 shadow-sm'
+                        : 'bg-white border-stone-200 hover:border-teal-200 hover:shadow-sm'
                     }`}
                   >
                     <div className="flex items-start gap-3">
@@ -543,13 +755,13 @@ export default function Home() {
                         )}
                       </div>
                       {isSelected && (
-                        <span className="text-green-400 shrink-0 mt-0.5 text-sm">✓</span>
+                        <span className="text-teal-400 shrink-0 mt-0.5 text-sm">✓</span>
                       )}
                     </div>
 
                     {matchCopy && (
                       <p className={`text-xs font-semibold mt-3 leading-snug ${
-                        isSelected ? 'text-green-700' : 'text-gray-700'
+                        isSelected ? 'text-teal-700' : 'text-gray-700'
                       }`}>
                         {matchCopy}
                       </p>
@@ -568,7 +780,7 @@ export default function Home() {
                             key={t}
                             className={`text-xs px-2 py-0.5 rounded-full border ${
                               isSelected
-                                ? 'bg-green-100 text-green-700 border-green-200'
+                                ? 'bg-teal-100 text-teal-700 border-teal-200'
                                 : 'bg-stone-50 text-gray-500 border-stone-100'
                             }`}
                           >
@@ -583,12 +795,11 @@ export default function Home() {
             )}
           </div>
 
-          {/* 右：詳細パネル（58%）—— stickyヘッダーはアニメラッパーの外に置く */}
+          {/* 右：詳細パネル（58%） */}
           <div className="flex-1 overflow-y-auto slim-scroll">
             {selectedAgent ? (
               <>
-                {/* Sticky mini-header（スクロール中も「誰の詳細か」を表示） */}
-                <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-stone-100 px-4 py-2.5 -mx-0 flex items-center justify-between mb-3 rounded-t-2xl">
+                <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-stone-100 px-4 py-2.5 flex items-center justify-between mb-3 rounded-t-2xl">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-full overflow-hidden bg-stone-100 flex items-center justify-center shrink-0">
                       {unlockedMap[selectedAgent.id] && selectedAgent.profile_image_url
@@ -602,13 +813,12 @@ export default function Home() {
                   </div>
                   <Link
                     href={`/salesperson/${selectedAgent.id}`}
-                    className="shrink-0 text-xs bg-orange-500 hover:bg-orange-400 text-white font-bold px-3 py-1.5 rounded-lg transition ml-3"
+                    className="shrink-0 text-xs bg-teal-500 hover:bg-teal-400 text-white font-bold px-3 py-1.5 rounded-lg transition ml-3"
                   >
-                    詳細・相談する
+                    詳細を見る
                   </Link>
                 </div>
 
-                {/* アニメーション付きコンテンツ */}
                 <div
                   style={{
                     opacity: detailVisible ? 1 : 0,
@@ -621,6 +831,7 @@ export default function Home() {
                     unlockedData={unlockedMap[selectedAgent.id] ?? null}
                     reviews={selectedReviews}
                     reviewsLoading={reviewsLoading}
+                    onViewContact={handleViewContact}
                   />
                 </div>
               </>
@@ -647,50 +858,165 @@ export default function Home() {
               const ai = (agent.ai_summary ?? null) as AISummary | null
               const matchCopy = ai?.goodMatch?.[0] ? formatMatchCopy(ai.goodMatch[0]) : null
               return (
-                <Link key={agent.id} href={`/salesperson/${agent.id}`}>
-                  <div className="bg-white rounded-2xl border border-stone-200 p-5 hover:shadow-sm transition-shadow">
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className="w-14 h-14 rounded-full overflow-hidden bg-stone-100 flex items-center justify-center shrink-0">
-                        {unlocked && agent.profile_image_url
-                          ? <img src={agent.profile_image_url} alt="" className="w-full h-full object-cover" />
-                          : <span className="text-2xl">👤</span>}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-gray-400">{agent.company_name}</p>
-                        <p className="text-base font-bold text-gray-800">
-                          {unlocked
-                            ? (unlockedMap[agent.id]?.real_name ?? '---')
-                            : (agent.name_initials ? `${agent.name_initials} さん` : '---')}
-                        </p>
-                        {agent.area_prefecture && (
-                          <p className="text-xs text-gray-500">📍 {agent.area_prefecture}</p>
-                        )}
-                      </div>
+                <div key={agent.id} className="bg-white rounded-2xl border border-stone-200 p-5 hover:shadow-sm transition-shadow">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="w-14 h-14 rounded-full overflow-hidden bg-stone-100 flex items-center justify-center shrink-0">
+                      {unlocked && agent.profile_image_url
+                        ? <img src={agent.profile_image_url} alt="" className="w-full h-full object-cover" />
+                        : <span className="text-2xl">👤</span>}
                     </div>
-                    {matchCopy && (
-                      <p className="text-sm font-semibold text-gray-700 mb-1.5">{matchCopy}</p>
-                    )}
-                    {ai?.communicationStyle && (
-                      <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">
-                        {ai.communicationStyle}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-400">{agent.company_name}</p>
+                      <p className="text-base font-bold text-gray-800">
+                        {unlocked
+                          ? (unlockedMap[agent.id]?.real_name ?? '---')
+                          : (agent.name_initials ? `${agent.name_initials} さん` : '---')}
                       </p>
-                    )}
-                    {(agent.specialties ?? []).length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-3">
-                        {(agent.specialties as string[]).slice(0, 3).map((s) => (
-                          <span key={s} className="text-xs bg-green-50 text-green-700 border border-green-100 px-2 py-0.5 rounded-full">
-                            {s}
-                          </span>
-                        ))}
-                      </div>
+                      {agent.area_prefecture && (
+                        <p className="text-xs text-gray-500">📍 {agent.area_prefecture}</p>
+                      )}
+                      {!unlocked && (
+                        <p className="text-xs text-stone-400 mt-0.5">🔒 氏名・写真は開示後に表示</p>
+                      )}
+                    </div>
+                  </div>
+                  {matchCopy && (
+                    <p className="text-sm font-semibold text-gray-700 mb-1.5">{matchCopy}</p>
+                  )}
+                  {ai?.communicationStyle && (
+                    <p className="text-sm text-gray-600 leading-relaxed line-clamp-3">
+                      {ai.communicationStyle}
+                    </p>
+                  )}
+                  {(agent.specialties ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {(agent.specialties as string[]).slice(0, 3).map((s) => (
+                        <span key={s} className="text-xs bg-teal-50 text-teal-700 border border-teal-100 px-2 py-0.5 rounded-full">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2 mt-4">
+                    <Link
+                      href={`/salesperson/${agent.id}`}
+                      className="flex-1 bg-teal-500 hover:bg-teal-400 text-white font-bold py-2.5 rounded-xl text-sm text-center transition"
+                    >
+                      詳しく見る
+                    </Link>
+                    {!unlocked && (
+                      <button
+                        onClick={() => handleViewContact(agent.id)}
+                        className="flex-1 bg-orange-500 hover:bg-orange-400 text-white font-bold py-2.5 rounded-xl text-sm transition"
+                      >
+                        名前・連絡先を見る
+                      </button>
                     )}
                   </div>
-                </Link>
+                </div>
               )
             })
           )}
         </div>
       </div>
+
+      {/* ===== はじめての方へ ===== */}
+      <section id="about" className="max-w-6xl mx-auto px-4 md:px-6 py-8 pb-16">
+        <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+          <button
+            onClick={() => setShowAbout((v) => !v)}
+            className="w-full flex items-center justify-between px-6 py-5 text-left hover:bg-stone-50 transition"
+          >
+            <div>
+              <h2 className="text-base font-bold text-gray-800">はじめての方へ</h2>
+              <p className="text-xs text-gray-500 mt-0.5">ERABERUの使い方・口コミの見方・ログインが必要な理由</p>
+            </div>
+            <span className="text-gray-400 text-lg ml-4 shrink-0">
+              {showAbout ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {showAbout && (
+            <div className="px-6 pb-8 space-y-6 border-t border-stone-100 pt-6">
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-2">ERABERUとは</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  住宅営業マンを「相性」や「口コミ」から探せるサービスです。
+                  「あの住宅会社に決めた、でも担当が合わない」という経験をなくすために生まれました。
+                  会社選びではなく、一緒に家づくりを進める担当者を選ぶことができます。
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-2">営業を相性で探す考え方</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  ERABERUでは、「傾聴型か提案型か」「数字で説明するか感覚で説明するか」など、
+                  営業マンのコミュニケーションスタイルを軸に整理しています。
+                  あなたの家づくりのスタイルに合った担当者を選ぶことで、安心して相談できる関係が生まれます。
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-2">条件検索とAI相談検索の違い</h3>
+                <div className="space-y-2">
+                  <div className="bg-teal-50 rounded-xl p-4">
+                    <p className="text-xs font-bold text-teal-700 mb-1">条件で探す</p>
+                    <p className="text-xs text-gray-600">エリア・会社名・得意分野など、探したい条件が明確な方に。絞り込みながら一覧を確認できます。</p>
+                  </div>
+                  <div className="bg-orange-50 rounded-xl p-4">
+                    <p className="text-xs font-bold text-orange-600 mb-1">AIに相談して探す</p>
+                    <p className="text-xs text-gray-600">「土地探しから一緒に動いてほしい」「押し売りが苦手」など、希望や不安を自由に書いてください。AIが営業選びを整理する手助けをします。</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-2">口コミの見方</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  ERABERUの口コミは、実際に住宅購入を経験した方からの声をもとにしています。
+                  星評価ではなく、「どんな場面で役立ったか」「どんなコミュニケーションスタイルか」といった
+                  テキスト中心の情報を重視しています。ランキング形式ではなく、あなたに合った人を選ぶための情報として活用してください。
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-2">情報開示にはログインが必要な理由</h3>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  氏名・顔写真・連絡先など、営業個人が特定できる情報の閲覧には、ログインが必要です。
+                  これは、営業個人の情報を保護し、開示履歴を正しく管理するためです。
+                  検索・口コミ傾向の確認・AI相談は、登録なしでご利用いただけます。
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-bold text-gray-700 mb-2">施主側のメリット</h3>
+                <ul className="space-y-1.5">
+                  {[
+                    '口コミや対応スタイルをもとに、相性の良さそうな営業を事前に確認できる',
+                    '「話をよく聞いてくれる」「押しつけ感が少ない」など、実際の声で比較できる',
+                    '会社選びと担当者選びを分けて考えられる',
+                    '気に入った営業が見つかってからログインすればOK、最初から登録は不要',
+                  ].map((item, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-600">
+                      <span className="text-teal-500 shrink-0 mt-0.5">✓</span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ===== モーダル ===== */}
+      {showLoginGate && <LoginGateModal onClose={() => setShowLoginGate(false)} />}
+      {showAiModal && (
+        <AiSearchModal
+          onClose={() => setShowAiModal(false)}
+          onSearch={handleAiSearch}
+        />
+      )}
     </main>
   )
 }
