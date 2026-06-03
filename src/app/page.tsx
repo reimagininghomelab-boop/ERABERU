@@ -44,6 +44,12 @@ type AISummary = {
   strengths?: string[]
 }
 
+type AiMatchResult = {
+  agent_id: string
+  score: number
+  match_reason: string
+}
+
 function formatMatchCopy(text: string): string {
   if (!text) return text
   if (text.endsWith('方')) return `${text}へ`
@@ -97,24 +103,61 @@ function LoginGateModal({ onClose }: { onClose: () => void }) {
 // ===== AI相談検索モーダル =====
 function AiSearchModal({
   onClose,
-  onSearch,
+  onSearchComplete,
+  agents,
 }: {
   onClose: () => void
-  onSearch: (query: string) => void
+  onSearchComplete: (query: string, results: AiMatchResult[]) => void
+  agents: any[]
 }) {
   const [query, setQuery] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const handleSubmit = (e: { preventDefault: () => void }) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!query.trim()) return
-    onSearch(query.trim())
-    onClose()
+    if (!query.trim() || loading) return
+    setLoading(true)
+    setError('')
+
+    try {
+      const agentData = agents.slice(0, 30).map((a) => ({
+        id: a.id,
+        company_name: a.company_name,
+        area_prefecture: a.area_prefecture,
+        specialty_styles: a.specialty_styles,
+        ai_summary: a.ai_summary
+          ? { communicationStyle: a.ai_summary.communicationStyle, goodMatch: a.ai_summary.goodMatch }
+          : undefined,
+        bio: a.bio,
+      }))
+
+      const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+      const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-match-agents`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${ANON_KEY}`,
+        },
+        body: JSON.stringify({ query: query.trim(), agents: agentData }),
+      })
+
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      onSearchComplete(query.trim(), data.results ?? [])
+      onClose()
+    } catch {
+      setError('AI検索に失敗しました。もう一度お試しください。')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <div
       className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      onClick={(e) => { if (e.target === e.currentTarget && !loading) onClose() }}
     >
       <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-xl">
         <div className="flex items-center gap-2 mb-1">
@@ -122,36 +165,43 @@ function AiSearchModal({
           <h3 className="text-base font-bold text-gray-800">AIに相談して探す</h3>
         </div>
         <p className="text-xs text-gray-400 mb-4">
-          希望や不安を自由に書いてください。入力内容をもとに営業候補を絞り込みます。
+          希望や不安を自由に書いてください。AIが相性の良い営業候補を選びます。
         </p>
         <form onSubmit={handleSubmit}>
           <textarea
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            disabled={loading}
             placeholder="例：土地探しから一緒に動いてくれる営業が良い。押し売りが苦手なので、じっくり話を聞いてくれる方を探しています。"
-            className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-stone-50 focus:outline-none focus:ring-2 focus:ring-teal-200 resize-none h-28"
+            className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-stone-50 focus:outline-none focus:ring-2 focus:ring-teal-200 resize-none h-28 disabled:opacity-60"
             autoFocus
           />
+          {error && (
+            <p className="text-xs text-red-500 mt-2">{error}</p>
+          )}
           <div className="mt-3 flex gap-2">
             <button
               type="submit"
-              disabled={!query.trim()}
-              className="flex-1 bg-teal-500 hover:bg-teal-400 disabled:bg-teal-200 text-white font-bold py-3 rounded-xl text-sm transition"
+              disabled={!query.trim() || loading}
+              className="flex-1 bg-orange-500 hover:bg-orange-400 disabled:bg-orange-200 text-white font-bold py-3 rounded-xl text-sm transition flex items-center justify-center gap-2"
             >
-              候補を探す
+              {loading ? (
+                <>
+                  <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  AIが分析中...
+                </>
+              ) : '候補を探す'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="px-4 text-gray-400 hover:text-gray-600 text-sm transition"
+              disabled={loading}
+              className="px-4 text-gray-400 hover:text-gray-600 text-sm transition disabled:opacity-40"
             >
               キャンセル
             </button>
           </div>
         </form>
-        <p className="text-xs text-gray-300 mt-3 text-center">
-          ※ 入力内容をもとにキーワード検索します
-        </p>
       </div>
     </div>
   )
@@ -411,6 +461,7 @@ export default function Home() {
   const [showAiModal, setShowAiModal] = useState(false)
   const [showLoginGate, setShowLoginGate] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
+  const [aiMode, setAiMode] = useState<{ query: string; results: AiMatchResult[] } | null>(null)
 
   const selectedIdRef = useRef(selectedId)
   selectedIdRef.current = selectedId
@@ -420,8 +471,8 @@ export default function Home() {
     searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const handleAiSearch = (query: string) => {
-    setKeyword(query)
+  const handleAiSearchComplete = (query: string, results: AiMatchResult[]) => {
+    setAiMode({ query, results })
     scrollToSearch()
   }
 
@@ -547,6 +598,22 @@ export default function Home() {
     })
   }, [agents, unlockedMap, keyword, filterPrefecture, filterSpecialty, filterQualification])
 
+  // AI推薦モード時：推薦エージェントを先頭に並べる
+  const displayedAgents = useMemo(() => {
+    if (!aiMode) return filteredAgents
+    const aiOrder = aiMode.results.map((r) => r.agent_id)
+    const aiAgents = aiOrder
+      .map((id) => filteredAgents.find((a) => a.id === id))
+      .filter(Boolean) as any[]
+    const rest = filteredAgents.filter((a) => !aiOrder.includes(a.id))
+    return [...aiAgents, ...rest]
+  }, [filteredAgents, aiMode])
+
+  const getAiMatchReason = (agentId: string): string | null => {
+    if (!aiMode) return null
+    return aiMode.results.find((r) => r.agent_id === agentId)?.match_reason ?? null
+  }
+
   useEffect(() => {
     if (checking || agents.length === 0) return
     if (filteredAgents.length === 0) {
@@ -651,6 +718,24 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ===== AI推薦バナー ===== */}
+      {aiMode && (
+        <div className="max-w-6xl mx-auto px-4 md:px-6 mb-3">
+          <div className="bg-orange-50 border border-orange-200 rounded-2xl px-5 py-3.5 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-orange-600 mb-0.5">AIが選んだ候補を表示中</p>
+              <p className="text-xs text-gray-600 line-clamp-2">「{aiMode.query}」</p>
+            </div>
+            <button
+              onClick={() => setAiMode(null)}
+              className="text-xs text-gray-400 hover:text-gray-600 shrink-0 whitespace-nowrap transition"
+            >
+              × 解除
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ===== 検索・絞り込みエリア ===== */}
       <div id="search" ref={searchRef} className="max-w-6xl mx-auto px-4 md:px-6">
         <div className="bg-white rounded-2xl border border-stone-200 p-4 space-y-3">
@@ -697,8 +782,8 @@ export default function Home() {
           )}
         </div>
         <p className="text-xs text-gray-400 mt-2 px-1">
-          {filteredAgents.length}人の営業マンが見つかりました
-          {filteredAgents.length !== agents.length && (
+          {displayedAgents.length}人の営業マンが見つかりました
+          {displayedAgents.length !== agents.length && (
             <span className="ml-1">（全{agents.length}人中）</span>
           )}
         </p>
@@ -712,7 +797,7 @@ export default function Home() {
 
           {/* 左：カード一覧（42%） */}
           <div className="w-[42%] overflow-y-auto space-y-2.5 slim-scroll">
-            {filteredAgents.length === 0 ? (
+            {displayedAgents.length === 0 ? (
               <div className="text-center py-20 text-gray-400">
                 <p className="text-4xl mb-4">👤</p>
                 <p className="text-sm">
@@ -720,7 +805,7 @@ export default function Home() {
                 </p>
               </div>
             ) : (
-              filteredAgents.map((agent) => {
+              displayedAgents.map((agent) => {
                 const isSelected = selectedId === agent.id
                 const unlocked = !!unlockedMap[agent.id]
                 const ai = (agent.ai_summary ?? null) as AISummary | null
@@ -730,6 +815,7 @@ export default function Home() {
                 const themes: string[] = (agent.specialties ?? []).slice(0, 3)
                 const matchCopy = ai?.goodMatch?.[0] ? formatMatchCopy(ai.goodMatch[0]) : null
                 const supplementary = ai?.communicationStyle ?? null
+                const aiReason = getAiMatchReason(agent.id)
 
                 return (
                   <button
@@ -759,7 +845,15 @@ export default function Home() {
                       )}
                     </div>
 
-                    {matchCopy && (
+                    {aiReason && (
+                      <div className="mt-3 bg-orange-50 border border-orange-100 rounded-xl px-3 py-2">
+                        <p className="text-xs text-orange-700 leading-relaxed">
+                          <span className="font-bold">AI推薦：</span>{aiReason}
+                        </p>
+                      </div>
+                    )}
+
+                    {!aiReason && matchCopy && (
                       <p className={`text-xs font-semibold mt-3 leading-snug ${
                         isSelected ? 'text-teal-700' : 'text-gray-700'
                       }`}>
@@ -845,7 +939,7 @@ export default function Home() {
 
         {/* モバイル：カード一覧 */}
         <div className="md:hidden pt-2 space-y-4 pb-8">
-          {filteredAgents.length === 0 ? (
+          {displayedAgents.length === 0 ? (
             <div className="text-center py-20 text-gray-400">
               <p className="text-4xl mb-4">👤</p>
               <p className="text-sm">
@@ -853,10 +947,11 @@ export default function Home() {
               </p>
             </div>
           ) : (
-            filteredAgents.map((agent) => {
+            displayedAgents.map((agent) => {
               const unlocked = !!unlockedMap[agent.id]
               const ai = (agent.ai_summary ?? null) as AISummary | null
               const matchCopy = ai?.goodMatch?.[0] ? formatMatchCopy(ai.goodMatch[0]) : null
+              const aiReason = getAiMatchReason(agent.id)
               return (
                 <div key={agent.id} className="bg-white rounded-2xl border border-stone-200 p-5 hover:shadow-sm transition-shadow">
                   <div className="flex items-start gap-3 mb-3">
@@ -880,7 +975,14 @@ export default function Home() {
                       )}
                     </div>
                   </div>
-                  {matchCopy && (
+                  {aiReason && (
+                    <div className="mb-3 bg-orange-50 border border-orange-100 rounded-xl px-3 py-2">
+                      <p className="text-xs text-orange-700 leading-relaxed">
+                        <span className="font-bold">AI推薦：</span>{aiReason}
+                      </p>
+                    </div>
+                  )}
+                  {!aiReason && matchCopy && (
                     <p className="text-sm font-semibold text-gray-700 mb-1.5">{matchCopy}</p>
                   )}
                   {ai?.communicationStyle && (
@@ -1014,7 +1116,8 @@ export default function Home() {
       {showAiModal && (
         <AiSearchModal
           onClose={() => setShowAiModal(false)}
-          onSearch={handleAiSearch}
+          onSearchComplete={handleAiSearchComplete}
+          agents={agents}
         />
       )}
     </main>
