@@ -100,7 +100,9 @@ function LoginGateModal({ onClose }: { onClose: () => void }) {
   )
 }
 
-// ===== AI相談検索モーダル =====
+// ===== AIチャットモーダル =====
+const AI_CHAT_GREETING = 'こんにちは！どんな住宅営業マンをお探しですか？エリアや希望、不安なことなど、気軽に教えてください。'
+
 function AiSearchModal({
   onClose,
   onSearchComplete,
@@ -110,16 +112,22 @@ function AiSearchModal({
   onSearchComplete: (query: string, results: AiMatchResult[]) => void
   agents: any[]
 }) {
-  const [query, setQuery] = useState('')
+  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([
+    { role: 'assistant', content: AI_CHAT_GREETING },
+  ])
+  const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [phase, setPhase] = useState<'chat' | 'searching'>('chat')
+  const bottomRef = useRef<HTMLDivElement>(null)
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    if (!query.trim() || loading) return
-    setLoading(true)
-    setError('')
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading, phase])
 
+  const runSearch = async (summary: string) => {
+    setPhase('searching')
+    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     try {
       const agentData = agents.slice(0, 30).map((a) => ({
         id: a.id,
@@ -131,77 +139,163 @@ function AiSearchModal({
           : undefined,
         bio: a.bio,
       }))
-
-      const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-      const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-match-agents`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${ANON_KEY}`,
-        },
-        body: JSON.stringify({ query: query.trim(), agents: agentData }),
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+        body: JSON.stringify({ query: summary, agents: agentData }),
       })
-
       if (!res.ok) throw new Error()
       const data = await res.json()
-      onSearchComplete(query.trim(), data.results ?? [])
+      onSearchComplete(summary, data.results ?? [])
       onClose()
     } catch {
-      setError('AI検索に失敗しました。もう一度お試しください。')
-    } finally {
+      setPhase('chat')
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: '候補の検索中にエラーが発生しました。もう一度お試しください。' },
+      ])
+    }
+  }
+
+  const handleSend = async () => {
+    if (!input.trim() || loading || phase === 'searching') return
+    const userText = input.trim()
+    setInput('')
+    const newMessages: { role: 'user' | 'assistant'; content: string }[] = [
+      ...messages,
+      { role: 'user', content: userText },
+    ]
+    setMessages(newMessages)
+    setLoading(true)
+
+    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+        body: JSON.stringify({ messages: newMessages }),
+      })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setMessages([...newMessages, { role: 'assistant', content: data.message }])
+      setLoading(false)
+      if (data.ready) {
+        setTimeout(() => runSearch(data.summary ?? userText), 600)
+      }
+    } catch {
+      setMessages([...newMessages, { role: 'assistant', content: 'エラーが発生しました。もう一度お試しください。' }])
       setLoading(false)
     }
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  const isBusy = loading || phase === 'searching'
+
   return (
     <div
       className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4"
-      onClick={(e) => { if (e.target === e.currentTarget && !loading) onClose() }}
+      onClick={(e) => { if (e.target === e.currentTarget && !isBusy) onClose() }}
     >
-      <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-xl">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-lg">✨</span>
-          <h3 className="text-base font-bold text-gray-800">AIに相談して探す</h3>
+      <div
+        className="bg-white rounded-2xl w-full max-w-lg shadow-xl flex flex-col"
+        style={{ height: 'min(540px, 88vh)' }}
+      >
+        {/* ヘッダー */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-stone-100 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-base">✨</span>
+            <h3 className="text-sm font-bold text-gray-800">AIに相談して探す</h3>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={isBusy}
+            className="text-gray-400 hover:text-gray-600 transition disabled:opacity-30 text-xl leading-none"
+          >
+            ×
+          </button>
         </div>
-        <p className="text-xs text-gray-400 mb-4">
-          希望や不安を自由に書いてください。AIが相性の良い営業候補を選びます。
-        </p>
-        <form onSubmit={handleSubmit}>
-          <textarea
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            disabled={loading}
-            placeholder="例：土地探しから一緒に動いてくれる営業が良い。押し売りが苦手なので、じっくり話を聞いてくれる方を探しています。"
-            className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-stone-50 focus:outline-none focus:ring-2 focus:ring-teal-200 resize-none h-28 disabled:opacity-60"
-            autoFocus
-          />
-          {error && (
-            <p className="text-xs text-red-500 mt-2">{error}</p>
+
+        {/* チャット本文 */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex items-end gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+              {msg.role === 'assistant' && (
+                <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center shrink-0 mb-0.5">
+                  <span className="text-xs leading-none">✨</span>
+                </div>
+              )}
+              <div
+                className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                  msg.role === 'user'
+                    ? 'bg-teal-500 text-white rounded-br-sm'
+                    : 'bg-stone-100 text-gray-800 rounded-bl-sm'
+                }`}
+              >
+                {msg.content}
+              </div>
+            </div>
+          ))}
+
+          {/* タイピングインジケーター */}
+          {loading && (
+            <div className="flex items-end gap-2 justify-start">
+              <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center shrink-0 mb-0.5">
+                <span className="text-xs leading-none">✨</span>
+              </div>
+              <div className="bg-stone-100 rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1 items-center">
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
           )}
-          <div className="mt-3 flex gap-2">
+
+          {/* 検索中インジケーター */}
+          {phase === 'searching' && (
+            <div className="flex items-end gap-2 justify-start">
+              <div className="w-6 h-6 rounded-full bg-orange-100 flex items-center justify-center shrink-0 mb-0.5">
+                <span className="text-xs leading-none">✨</span>
+              </div>
+              <div className="bg-orange-50 border border-orange-100 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm text-orange-700 flex items-center gap-2">
+                <span className="inline-block w-3.5 h-3.5 border-2 border-orange-200 border-t-orange-500 rounded-full animate-spin shrink-0" />
+                候補を探しています...
+              </div>
+            </div>
+          )}
+
+          <div ref={bottomRef} />
+        </div>
+
+        {/* 入力エリア */}
+        <div className="px-4 py-3 border-t border-stone-100 shrink-0">
+          <div className="flex gap-2 items-end">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isBusy}
+              placeholder="メッセージを入力（Enterで送信）"
+              className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 resize-none bg-stone-50 disabled:opacity-50"
+              rows={2}
+              autoFocus
+            />
             <button
-              type="submit"
-              disabled={!query.trim() || loading}
-              className="flex-1 bg-orange-500 hover:bg-orange-400 disabled:bg-orange-200 text-white font-bold py-3 rounded-xl text-sm transition flex items-center justify-center gap-2"
+              onClick={handleSend}
+              disabled={!input.trim() || isBusy}
+              className="shrink-0 bg-teal-500 hover:bg-teal-400 disabled:bg-teal-200 text-white font-bold px-4 py-2.5 rounded-xl text-sm transition self-end"
             >
-              {loading ? (
-                <>
-                  <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                  AIが分析中...
-                </>
-              ) : '候補を探す'}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="px-4 text-gray-400 hover:text-gray-600 text-sm transition disabled:opacity-40"
-            >
-              キャンセル
+              送信
             </button>
           </div>
-        </form>
+          <p className="text-xs text-gray-300 mt-1.5 text-center">Shift+Enterで改行</p>
+        </div>
       </div>
     </div>
   )
