@@ -126,8 +126,6 @@ function AiSearchModal({
 
   const runSearch = async (summary: string) => {
     setPhase('searching')
-    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     try {
       const agentData = agents.slice(0, 30).map((a) => ({
         id: a.id,
@@ -139,9 +137,9 @@ function AiSearchModal({
           : undefined,
         bio: a.bio,
       }))
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-match-agents`, {
+      const res = await fetch('/api/ai/match-agents', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: summary, agents: agentData }),
       })
       if (!res.ok) throw new Error()
@@ -168,12 +166,10 @@ function AiSearchModal({
     setMessages(newMessages)
     setLoading(true)
 
-    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/ai-chat`, {
+      const res = await fetch('/api/ai/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${ANON_KEY}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newMessages }),
       })
       if (!res.ok) throw new Error()
