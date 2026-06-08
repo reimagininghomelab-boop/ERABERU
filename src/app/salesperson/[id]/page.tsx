@@ -38,6 +38,7 @@ export default function SalespersonDetail() {
   const [allAnonReviews, setAllAnonReviews] = useState<any[]>([])
   const [phaseFilter, setPhaseFilter] = useState<string>('all')
   const [userSubmittedPhases, setUserSubmittedPhases] = useState<string[]>([])
+  const [myReviewIds, setMyReviewIds] = useState<Set<string>>(new Set())
 
   const PHASE_META: Record<string, { label: string; bg: string; border: string; text: string }> = {
     pre_contract:   { label: '契約前', bg: 'bg-teal-50',   border: 'border-teal-200',   text: 'text-teal-700' },
@@ -103,19 +104,23 @@ export default function SalespersonDetail() {
           setUnlockedData(full)
           await fetchReviews(supabase, user.id)
 
-          const { data: anonData } = await supabase
-            .from('anonymous_reviews')
-            .select('id, rating, content, phase, source, created_at, user_id')
-            .eq('salesperson_id', id)
-            .eq('status', 'visible')
-            .order('created_at', { ascending: false })
-          if (anonData) {
-            setAllAnonReviews(anonData)
+          const [{ data: anonData }, { data: myPhaseData }] = await Promise.all([
+            supabase
+              .from('anonymous_reviews')
+              .select('id, rating, content, phase, source, created_at')
+              .eq('salesperson_id', id)
+              .eq('status', 'visible')
+              .order('created_at', { ascending: false }),
+            supabase.rpc('get_my_submitted_phases', { p_salesperson_id: id }),
+          ])
+          if (anonData) setAllAnonReviews(anonData)
+          if (myPhaseData) {
             setUserSubmittedPhases(
-              anonData
-                .filter((r: any) => r.user_id === user.id && r.phase !== 'pre_contract')
-                .map((r: any) => r.phase)
+              (myPhaseData as { phase: string; review_id: string }[])
+                .filter((r) => r.phase !== 'pre_contract')
+                .map((r) => r.phase)
             )
+            setMyReviewIds(new Set((myPhaseData as { phase: string; review_id: string }[]).map((r) => r.review_id)))
           }
         }
 
@@ -495,7 +500,7 @@ export default function SalespersonDetail() {
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full bg-white border ${meta.border} ${meta.text}`}>
                             {meta.label}
                           </span>
-                          {r.user_id === user?.id && (
+                          {myReviewIds.has(r.id) && (
                             <span className="text-xs bg-orange-50 text-orange-500 border border-orange-200 px-2 py-0.5 rounded-full">あなたの口コミ</span>
                           )}
                           {r.rating && (
