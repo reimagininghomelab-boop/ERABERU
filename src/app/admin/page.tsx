@@ -308,7 +308,7 @@ export default function AdminPage() {
         </div>
 
         {/* 口コミ一覧（成約 + QR統合） */}
-        {tab !== 'salesperson' && (() => {
+        {tab !== 'salesperson' && tab !== 'superseded' && (() => {
           const displayed = tab === 'pending' ? pending : approved
           const isProcessing = (r: any) =>
             r._type === 'qr' ? anonApprovingId === r.id : approvingId === r.id

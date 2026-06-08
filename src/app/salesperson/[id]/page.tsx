@@ -39,6 +39,7 @@ export default function SalespersonDetail() {
   const [phaseFilter, setPhaseFilter] = useState<string>('all')
   const [userSubmittedPhases, setUserSubmittedPhases] = useState<string[]>([])
   const [myReviewIds, setMyReviewIds] = useState<Set<string>>(new Set())
+  const [ownReview, setOwnReview] = useState<any>(null)
 
   const PHASE_META: Record<string, { label: string; bg: string; border: string; text: string }> = {
     pre_contract:   { label: '契約前', bg: 'bg-teal-50',   border: 'border-teal-200',   text: 'text-teal-700' },
@@ -48,20 +49,30 @@ export default function SalespersonDetail() {
   }
 
   const fetchReviews = async (supabase: ReturnType<typeof createClient>, currentUserId: string) => {
+    // 自分の口コミのみ取得（RLS "users can view own reviews" で自分の行のみ返る）
+    const { data: ownData } = await supabase
+      .from('contract_reviews')
+      .select('id, rating, contract_price, content, created_at, meeting_status, is_approved')
+      .eq('salesperson_id', id)
+      .eq('user_id', currentUserId)
+      .maybeSingle()
+    setOwnReview(ownData ?? null)
+    if (ownData) {
+      setFormRating(ownData.rating ?? 0)
+      setFormContent(ownData.content ?? '')
+      setFormPrice(ownData.contract_price ? String(ownData.contract_price / 10000) : '')
+      setFormMeetingStatus(ownData.meeting_status ?? '')
+    }
+
+    // 他人の承認済み口コミ（user_id は取得しない）
     const { data } = await supabase
       .from('contract_reviews')
-      .select('id, rating, contract_price, content, created_at, meeting_status, is_approved, user_id')
+      .select('id, rating, contract_price, content, created_at, meeting_status, is_approved')
       .eq('salesperson_id', id)
+      .eq('is_approved', true)
       .order('created_at', { ascending: false })
     if (data) {
-      setReviews(data)
-      const own = data.find((r: any) => r.user_id === currentUserId)
-      if (own) {
-        setFormRating(own.rating ?? 0)
-        setFormContent(own.content ?? '')
-        setFormPrice(own.contract_price ? String(own.contract_price / 10000) : '')
-        setFormMeetingStatus(own.meeting_status ?? '')
-      }
+      setReviews(data.filter((r: any) => r.id !== ownData?.id))
     }
   }
 
@@ -219,8 +230,7 @@ export default function SalespersonDetail() {
     </div>
   )
 
-  const ownReview = reviews.find((r) => r.user_id === user?.id)
-  const otherApprovedReviews = reviews.filter((r) => r.user_id !== user?.id && r.is_approved)
+  // ownReview は state で管理。reviews は他人の承認済み口コミのみを格納している
 
   return (
     <main className="min-h-screen bg-stone-100">
@@ -556,12 +566,12 @@ export default function SalespersonDetail() {
             )}
 
             {/* 他ユーザーの承認済み口コミ */}
-            {otherApprovedReviews.length === 0 && !ownReview && (
+            {reviews.length === 0 && !ownReview && (
               <p className="text-sm text-gray-400">まだ口コミがありません</p>
             )}
-            {otherApprovedReviews.length > 0 && (
+            {reviews.length > 0 && (
               <div className="space-y-4">
-                {otherApprovedReviews.map((r, i) => (
+                {reviews.map((r, i) => (
                   <div key={i} className="border-b border-stone-100 pb-4 last:border-0 last:pb-0">
                     {r.rating && (
                       <p className="text-sm text-amber-400 mb-1">
