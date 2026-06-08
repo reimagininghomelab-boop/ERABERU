@@ -341,7 +341,7 @@ export default function SalespersonRegisterPage() {
                 <select
                   value={selectedCompanyId}
                   onChange={(e) => setSelectedCompanyId(e.target.value)}
-                  className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white"
+                  className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white"
                 >
                   <option value="">会社を選択してください</option>
                   {companies.map((c) => (
@@ -359,7 +359,7 @@ export default function SalespersonRegisterPage() {
                     value={companyNameInput}
                     onChange={(e) => setCompanyNameInput(e.target.value)}
                     placeholder="例: ○○工務店、△△ホーム"
-                    className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
                   />
                   <p className="text-xs text-stone-400 mt-1">一覧にない会社・工務店も申請できます。確認後に公開されます。</p>
                 </div>
@@ -372,7 +372,7 @@ export default function SalespersonRegisterPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="example@company.co.jp"
-                  className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
                 />
                 <p className="text-xs text-stone-400 mt-1">会社メールアドレス以外（Gmail等）でも登録できます。確認が取れるまで非公開となります。</p>
               </div>
@@ -383,7 +383,7 @@ export default function SalespersonRegisterPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="6文字以上"
-                  className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
                 />
               </div>
             </div>
@@ -446,14 +446,14 @@ export default function SalespersonRegisterPage() {
                       value={familyName}
                       onChange={(e) => setFamilyName(e.target.value)}
                       placeholder="姓（例: 山田）"
-                      className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                      className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
                     />
                     <input
                       type="text"
                       value={givenName}
                       onChange={(e) => setGivenName(e.target.value)}
                       placeholder="名（例: 誠）"
-                      className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                      className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
                     />
                   </div>
                 </div>
@@ -465,7 +465,7 @@ export default function SalespersonRegisterPage() {
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
                     placeholder="例: 東京支店 営業2課"
-                    className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
                   />
                 </div>
               </div>
@@ -482,7 +482,7 @@ export default function SalespersonRegisterPage() {
                     value={coreCity}
                     onChange={(e) => setCoreCity(e.target.value)}
                     placeholder="例: 横浜市青葉区"
-                    className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
                   />
                 </div>
                 <div>
@@ -592,7 +592,7 @@ export default function SalespersonRegisterPage() {
               <textarea
                 value={bio} onChange={(e) => setBio(e.target.value)}
                 rows={4} placeholder="お客様への一言、得意なこと、大切にしていることなど"
-                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300 resize-none"
+                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300 resize-none"
               />
             </div>
 

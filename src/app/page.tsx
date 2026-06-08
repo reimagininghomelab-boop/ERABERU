@@ -278,7 +278,7 @@ function AiSearchModal({
               onKeyDown={handleKeyDown}
               disabled={isBusy}
               placeholder="メッセージを入力（Enterで送信）"
-              className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 resize-none bg-stone-50 disabled:opacity-50"
+              className="flex-1 text-sm text-gray-800 border border-stone-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 resize-none bg-stone-50 disabled:opacity-50"
               rows={2}
               autoFocus
             />
@@ -834,7 +834,7 @@ export default function Home() {
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="キーワード・会社名・得意分野で検索"
-            className="w-full text-sm border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 bg-white"
+            className="w-full text-sm text-gray-800 border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 bg-white"
           />
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <select

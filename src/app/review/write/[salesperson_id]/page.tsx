@@ -265,7 +265,7 @@ export default function WriteReviewPage() {
                 onChange={(e) => setContent(e.target.value)}
                 placeholder={`${displayName}さんの${currentPhase.label}の対応はいかがでしたか？`}
                 rows={5}
-                className="w-full text-sm border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300"
+                className="w-full text-sm text-gray-800 border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300"
               />
               <p className="text-xs text-gray-300 mt-1 text-right">{content.length} 文字</p>
             </div>

@@ -58,7 +58,7 @@ export default function ResetPasswordPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={6}
-                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-stone-50 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 bg-stone-50 focus:outline-none focus:ring-2 focus:ring-orange-300"
                 placeholder="6文字以上"
               />
             </div>
