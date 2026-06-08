@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
       p_content: content.trim(),
       p_email_hash: emailHash,
       p_phase: resolvedPhase,
+      p_user_id: user.id,
     })
 
     if (error) throw error
@@ -57,16 +58,6 @@ export async function POST(req: NextRequest) {
     if (data?.error === 'invalid_token') {
       return NextResponse.json({ error: 'このQRコードは無効または期限切れです' }, { status: 404 })
     }
-    if (data?.error === 'duplicate_email') {
-      return NextResponse.json(
-        {
-          error: 'このメールアドレスでは、すでにこの担当者への口コミが投稿されています。内容の修正や削除を希望する場合は、お問い合わせください。',
-          duplicate: true,
-        },
-        { status: 409 }
-      )
-    }
-
     return NextResponse.json({ success: true })
   } catch (e) {
     console.error('[review/submit-email-verified]', e)

@@ -111,6 +111,7 @@ export default function SalespersonDashboard() {
         .from('anonymous_reviews')
         .select('id, rating, content, phase, source, status, created_at')
         .eq('salesperson_id', own.id)
+        .neq('status', 'superseded')
         .order('created_at', { ascending: false })
       if (ar) setAnonReviews(ar)
 

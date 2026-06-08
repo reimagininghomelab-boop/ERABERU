@@ -13,7 +13,7 @@ export default function AdminPage() {
   const [reviews, setReviews] = useState<any[]>([])
   const [agentMap, setAgentMap] = useState<Record<string, string>>({})
   const [approvingId, setApprovingId] = useState<string | null>(null)
-  const [tab, setTab] = useState<'pending' | 'approved' | 'salesperson'>('pending')
+  const [tab, setTab] = useState<'pending' | 'approved' | 'superseded' | 'salesperson'>('pending')
   const [applications, setApplications] = useState<any[]>([])
   const [processingAppId, setProcessingAppId] = useState<string | null>(null)
   const [aiGeneratingId, setAiGeneratingId] = useState<string | null>(null)
@@ -234,8 +234,10 @@ export default function AdminPage() {
     ...anonReviews.map((r) => ({ ...r, _type: 'qr' as const })),
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-  const isVisible = (r: any) => r._type === 'qr' ? r.status !== 'hidden' : r.is_approved
-  const pending = allReviews.filter((r) => !isVisible(r))
+  const isSuperseded = (r: any) => r._type === 'qr' && r.status === 'superseded'
+  const isVisible = (r: any) => r._type === 'qr' ? r.status === 'visible' : r.is_approved
+  const superseded = allReviews.filter((r) => isSuperseded(r))
+  const pending = allReviews.filter((r) => !isVisible(r) && !isSuperseded(r))
   const approved = allReviews.filter((r) => isVisible(r))
 
   return (
@@ -274,6 +276,19 @@ export default function AdminPage() {
           >
             口コミ（公開中）
             <span className="ml-2 text-xs opacity-70">{approved.length}</span>
+          </button>
+          <button
+            onClick={() => setTab('superseded')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+              tab === 'superseded'
+                ? 'bg-gray-500 text-white'
+                : 'bg-stone-50 text-gray-700 border border-stone-200 hover:border-gray-300'
+            }`}
+          >
+            上書き済み
+            {superseded.length > 0 && (
+              <span className="ml-2 text-xs opacity-70">{superseded.length}</span>
+            )}
           </button>
           <button
             onClick={() => setTab('salesperson')}
@@ -373,6 +388,51 @@ export default function AdminPage() {
             </div>
           )
         })()}
+
+        {/* 上書き済み口コミ（管理者専用） */}
+        {tab === 'superseded' && (
+          superseded.length === 0 ? (
+            <div className="text-center py-20 text-gray-400">
+              <p className="text-3xl mb-3">📦</p>
+              <p className="text-sm">上書き済みの口コミはありません</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-xs text-gray-400 bg-stone-50 border border-stone-200 rounded-xl px-4 py-2">
+                新しい口コミに上書きされた旧バージョンです。データは保持されていますが、営業側・施主側には表示されません。
+              </p>
+              {superseded.map((r) => (
+                <div key={`superseded-${r.id}`} className="bg-stone-50 rounded-2xl border border-stone-200 p-6 opacity-70">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-xs text-gray-600 mb-0.5">営業マン</p>
+                      <p className="text-sm font-semibold text-gray-800">
+                        {agentMap[r.salesperson_id] ?? r.salesperson_id}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full font-medium">上書き済み</span>
+                      {r.phase && (
+                        <span className="text-xs bg-stone-100 text-stone-500 px-2 py-0.5 rounded-full">{r.phase}</span>
+                      )}
+                      <p className="text-xs text-gray-400">
+                        {new Date(r.created_at).toLocaleDateString('ja-JP')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {r.rating && (
+                      <p className="text-sm text-amber-300">
+                        {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                      </p>
+                    )}
+                    <p className="text-sm text-gray-500 leading-relaxed">{r.content}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
 
         {/* 営業マン管理 */}
         {tab === 'salesperson' && (() => {
