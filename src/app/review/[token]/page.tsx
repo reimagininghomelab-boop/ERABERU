@@ -46,17 +46,13 @@ export default function AnonymousReviewPage() {
 
   const load = async () => {
     const supabase = createClient()
-    const { data } = await supabase
-      .from('salesperson_profiles')
-      .select('id, family_name, given_name, real_name, company_name, department, qr_token, status')
-      .eq('qr_token', token)
-      .eq('status', 'active')
-      .maybeSingle()
+    const { data } = await supabase.rpc('get_salesperson_by_qr_token', { p_token: token as string })
+    const salespersonData = Array.isArray(data) ? data[0] : null
 
-    if (!data) {
+    if (!salespersonData) {
       setNotFound(true)
     } else {
-      setSalesperson(data)
+      setSalesperson(salespersonData)
       setStep('salesperson-confirm')
     }
     setLoading(false)
@@ -85,20 +81,16 @@ export default function AnonymousReviewPage() {
     // signOut はここではなく投稿成功後に行う（先にsignOutするとtokenが無効になるため）
     const token_jwt = session.access_token
 
-    const { data } = await supabase
-      .from('salesperson_profiles')
-      .select('id, family_name, given_name, real_name, company_name, department, qr_token, status')
-      .eq('qr_token', token)
-      .eq('status', 'active')
-      .maybeSingle()
+    const { data } = await supabase.rpc('get_salesperson_by_qr_token', { p_token: token as string })
+    const salespersonData = Array.isArray(data) ? data[0] : null
 
-    if (!data) {
+    if (!salespersonData) {
       setNotFound(true)
       setLoading(false)
       return
     }
 
-    setSalesperson(data)
+    setSalesperson(salespersonData)
     setAccessToken(token_jwt)
     setStep('form')
     setLoading(false)
