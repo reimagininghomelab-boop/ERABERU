@@ -590,6 +590,24 @@ function SearchContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredAgents, loading])
 
+  // contactedIds ロード後、選択中エージェントが接点済みになったら mainAgents 先頭に切り替える
+  useEffect(() => {
+    if (!isLoggedIn || contactedIds.size === 0 || !selectedIdRef.current) return
+    if (contactedIds.has(selectedIdRef.current)) {
+      const firstMain = filteredAgents.find((a) => !contactedIds.has(a.id))
+      if (firstMain) {
+        setSelectedId(firstMain.id)
+        fetchReviewsForAgent(firstMain.id)
+        setDetailVisible(true)
+      } else {
+        setSelectedId(null)
+        setSelectedReviews([])
+        setDetailVisible(false)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactedIds, isLoggedIn])
+
   if (loading) return <div className="min-h-screen bg-stone-50" />
 
   const selectedAgent = selectedId ? (agents.find((a) => a.id === selectedId) ?? null) : null

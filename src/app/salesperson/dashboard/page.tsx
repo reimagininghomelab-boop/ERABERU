@@ -70,6 +70,14 @@ export default function SalespersonDashboard() {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
 
   useEffect(() => {
+    // URL パラメータで初期タブを指定可能（例: ?tab=offers）
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search).get('tab')
+      if (p === 'offers' || p === 'settings' || p === 'preview') setTab(p as Tab)
+    }
+  }, [])
+
+  useEffect(() => {
     const supabase = createClient()
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
