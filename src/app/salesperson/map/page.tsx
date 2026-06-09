@@ -558,7 +558,12 @@ export default function StyleMapPage() {
                         <span className="text-xs bg-rose-50 text-rose-500 px-2 py-0.5 rounded-full border border-rose-100">♥</span>
                       )}
                       {selected.isVerified && (
-                        <span className="text-xs bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-full">✓</span>
+                        <span
+                          className="text-xs bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-full cursor-help"
+                          title="登録メールのドメインが、選択された会社の登録ドメインと一致しています。本人性・現在の在籍をERABERUが保証するものではありません。"
+                        >
+                          ✓ 会社ドメイン一致
+                        </span>
                       )}
                     </div>
                     <button onClick={() => setSelectedId(null)} className="text-stone-300 hover:text-stone-500 transition text-xl leading-none">×</button>

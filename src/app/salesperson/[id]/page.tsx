@@ -255,7 +255,12 @@ export default function SalespersonDetail() {
             </div>
             <div className="flex flex-col items-end gap-2">
               {agent.is_verified && (
-                <span className="text-sm bg-blue-100 text-blue-600 font-medium px-3 py-1 rounded-full">✓ 本人確認済み</span>
+                <span
+                  className="text-sm bg-blue-50 text-blue-600 font-medium px-3 py-1 rounded-full cursor-help"
+                  title="登録メールのドメインが、選択された会社の登録ドメインと一致しています。本人性・現在の在籍をERABERUが保証するものではありません。"
+                >
+                  ✓ 会社ドメイン一致
+                </span>
               )}
               {user && (
                 <button
