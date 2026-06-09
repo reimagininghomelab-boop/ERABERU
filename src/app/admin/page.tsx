@@ -636,7 +636,7 @@ export default function AdminPage() {
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${o.status === 'new' ? 'bg-teal-100 text-teal-700' : 'bg-stone-100 text-stone-500'}`}>
-                        {o.status === 'new' ? '未対応' : o.status}
+                        {o.status === 'new' ? '新着' : o.status === 'done' ? '対応済み' : o.status}
                       </span>
                       <p className="text-xs text-gray-400">{new Date(o.created_at).toLocaleDateString('ja-JP')}</p>
                     </div>

@@ -20,6 +20,7 @@ export default function WriteReviewPage() {
 
   const [salesperson, setSalesperson] = useState<any>(null)
   const [notFound, setNotFound] = useState(false)
+  const [accessDenied, setAccessDenied] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
   const [accessToken, setAccessToken] = useState<string | null>(null)
 
@@ -49,23 +50,38 @@ export default function WriteReviewPage() {
     const load = async () => {
       const supabase = createClient()
 
+      // safe_salesperson_profiles には family_name/given_name/real_name がないため name_initials を使用
       const { data: sp } = await supabase
         .from('safe_salesperson_profiles')
-        .select('id, family_name, given_name, real_name, company_name, department')
-        .eq('id', salesperson_id)
+        .select('id, name_initials, company_name, department')
+        .eq('id', salesperson_id as string)
         .maybeSingle()
 
       if (!sp) { setNotFound(true); return }
       setSalesperson(sp)
 
-      // 既投稿フェーズを取得
-      const { data: reviews } = await supabase
-        .from('anonymous_reviews')
-        .select('phase')
-        .eq('salesperson_id', salesperson_id as string)
-        .in('phase', ['post_contract', 'after_start', 'after_handover'])
-      if (reviews) {
-        setSubmittedPhases(reviews.map((r: any) => r.phase))
+      // 権限チェック：このユーザーが対象営業へ offer を送信済み、または既に口コミ投稿済みかを確認
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      const [{ count: offerCount }, { data: ownPhaseData }] = await Promise.all([
+        supabase
+          .from('offers')
+          .select('id', { count: 'exact', head: true })
+          .eq('salesperson_id', salesperson_id as string),
+        // RLS "authenticated can read own reviews" で自分のレビューのみ返る
+        supabase
+          .from('anonymous_reviews')
+          .select('phase')
+          .eq('salesperson_id', salesperson_id as string)
+          .eq('user_id', currentUser?.id ?? 'INVALID')
+          .in('phase', ['post_contract', 'after_start', 'after_handover'])
+          .neq('status', 'superseded'),
+      ])
+
+      const hasPermission = (offerCount ?? 0) > 0 || (ownPhaseData ?? []).length > 0
+      if (!hasPermission) { setAccessDenied(true); return }
+
+      if (ownPhaseData) {
+        setSubmittedPhases(ownPhaseData.map((r: any) => r.phase))
       }
     }
     load()
@@ -111,13 +127,26 @@ export default function WriteReviewPage() {
     )
   }
 
+  if (accessDenied) {
+    return (
+      <div className="min-h-screen bg-stone-100 flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <span className="text-5xl">🔒</span>
+        <p className="text-lg font-bold text-gray-700">口コミ投稿にはやりとりの記録が必要です</p>
+        <p className="text-sm text-gray-500 leading-relaxed">
+          この営業マンへの相談リクエスト、または既存の口コミがある場合のみ追加投稿できます。
+        </p>
+        <Link href="/mypage" className="text-sm text-teal-600 hover:underline">相談・口コミ管理へ</Link>
+      </div>
+    )
+  }
+
   if (!salesperson) {
     return <div className="min-h-screen bg-stone-100 flex items-center justify-center text-gray-400">読み込み中...</div>
   }
 
-  const displayName = salesperson.family_name && salesperson.given_name
-    ? `${salesperson.family_name} ${salesperson.given_name}`
-    : salesperson.real_name
+  const displayName = salesperson.name_initials
+    ? `${salesperson.name_initials} さん`
+    : salesperson.company_name
 
   const availablePhases = PHASES.filter((p) => !submittedPhases.includes(p.value))
 
