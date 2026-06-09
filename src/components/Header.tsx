@@ -49,22 +49,16 @@ export default function Header({ backButton = false }: { backButton?: boolean })
             </div>
             <nav className="flex items-center gap-0.5">
               <Link
-                href="/#search"
+                href="/search"
                 className="text-sm text-gray-600 hover:text-teal-600 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition"
               >
                 営業を探す
               </Link>
               <Link
-                href="/#ai-search"
+                href="/search?ai=1"
                 className="text-sm text-gray-600 hover:text-teal-600 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition"
               >
                 AIに相談
-              </Link>
-              <Link
-                href="/#about"
-                className="text-sm text-gray-600 hover:text-teal-600 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition"
-              >
-                はじめての方へ
               </Link>
             </nav>
           </div>
@@ -84,10 +78,16 @@ export default function Header({ backButton = false }: { backButton?: boolean })
                   </Link>
                 )}
                 <Link
+                  href="/mypage"
+                  className="text-sm text-gray-700 hover:text-teal-600 px-3 py-1.5 rounded-lg border border-stone-200 hover:border-teal-200 transition"
+                >
+                  口コミ管理
+                </Link>
+                <Link
                   href="/salesperson/dashboard"
                   className="text-sm text-gray-700 hover:text-teal-600 px-3 py-1.5 rounded-lg border border-stone-200 hover:border-teal-200 transition"
                 >
-                  マイページ
+                  営業ダッシュボード
                 </Link>
                 <button
                   onClick={handleSignOut}

@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
 import type { User } from '@supabase/supabase-js'
 
-const MEETING_STATUSES = ['契約前', '契約後', '建築中', '引渡し済'] as const
+const OFFER_TIMINGS = ['3ヶ月以内', '半年以内', '1年以内', 'まだ未定'] as const
 
 const SALES_STYLE_AXES = [
   { key: 'listening_proposing', left: '傾聴型', right: '提案型' },
@@ -26,13 +26,6 @@ export default function SalespersonDetail() {
   const [payError, setPayError] = useState('')
   const [reviews, setReviews] = useState<any[]>([])
   const [reviewStats, setReviewStats] = useState<{ total: number; visible: number; rate: number | null; avg_rating: number | null } | null>(null)
-  const [formRating, setFormRating] = useState(0)
-  const [formContent, setFormContent] = useState('')
-  const [formPrice, setFormPrice] = useState('')
-  const [formMeetingStatus, setFormMeetingStatus] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [submitDone, setSubmitDone] = useState(false)
-  const [submitError, setSubmitError] = useState('')
   const [isFavorited, setIsFavorited] = useState(false)
   const [favoriteLoading, setFavoriteLoading] = useState(false)
   const [allAnonReviews, setAllAnonReviews] = useState<any[]>([])
@@ -40,6 +33,16 @@ export default function SalespersonDetail() {
   const [userSubmittedPhases, setUserSubmittedPhases] = useState<string[]>([])
   const [myReviewIds, setMyReviewIds] = useState<Set<string>>(new Set())
   const [ownReview, setOwnReview] = useState<any>(null)
+  // オファーフォーム
+  const [showOfferForm, setShowOfferForm] = useState(false)
+  const [offerArea, setOfferArea] = useState('')
+  const [offerTiming, setOfferTiming] = useState('')
+  const [offerMessage, setOfferMessage] = useState('')
+  const [offerName, setOfferName] = useState('')
+  const [offerEmail, setOfferEmail] = useState('')
+  const [offerSending, setOfferSending] = useState(false)
+  const [offerDone, setOfferDone] = useState(false)
+  const [offerError, setOfferError] = useState('')
 
   const PHASE_META: Record<string, { label: string; bg: string; border: string; text: string }> = {
     pre_contract:   { label: '契約前', bg: 'bg-teal-50',   border: 'border-teal-200',   text: 'text-teal-700' },
@@ -57,12 +60,6 @@ export default function SalespersonDetail() {
       .eq('user_id', currentUserId)
       .maybeSingle()
     setOwnReview(ownData ?? null)
-    if (ownData) {
-      setFormRating(ownData.rating ?? 0)
-      setFormContent(ownData.content ?? '')
-      setFormPrice(ownData.contract_price ? String(ownData.contract_price / 10000) : '')
-      setFormMeetingStatus(ownData.meeting_status ?? '')
-    }
 
     // 他人の承認済み口コミ（user_id は取得しない）
     const { data } = await supabase
@@ -192,35 +189,29 @@ export default function SalespersonDetail() {
     }
   }
 
-  const handleReviewSubmit = async () => {
-    if (formRating === 0 || !formContent.trim() || !user) return
-    setSubmitting(true)
-    setSubmitError('')
-    setSubmitDone(false)
+  const handleOfferSubmit = async () => {
+    if (!offerMessage.trim() || !offerName.trim() || !offerEmail.trim()) return
+    setOfferSending(true)
+    setOfferError('')
     try {
-      const supabase = createClient()
-      const { error } = await supabase.from('contract_reviews').upsert(
-        {
+      const res = await fetch('/api/offers/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           salesperson_id: id,
-          user_id: user.id,
-          rating: formRating,
-          content: formContent.trim(),
-          contract_price: formPrice ? parseInt(formPrice) * 10000 : null,
-          meeting_status: formMeetingStatus || null,
-          is_approved: false,
-        },
-        { onConflict: 'user_id,salesperson_id' }
-      )
-      if (error) throw error
-      await fetchReviews(supabase, user.id)
-      const { data: stats } = await supabase.rpc('get_salesperson_review_stats', { p_salesperson_id: id })
-      if (stats) setReviewStats(stats)
-      setSubmitDone(true)
-    } catch (e) {
-      console.error(e)
-      setSubmitError('投稿に失敗しました。もう一度お試しください。')
+          area: offerArea || null,
+          timing: offerTiming || null,
+          message: offerMessage.trim(),
+          contact_name: offerName.trim(),
+          contact_email: offerEmail.trim(),
+        }),
+      })
+      if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? '送信失敗') }
+      setOfferDone(true)
+    } catch (e: any) {
+      setOfferError(e.message ?? '送信に失敗しました。もう一度お試しください。')
     } finally {
-      setSubmitting(false)
+      setOfferSending(false)
     }
   }
 
@@ -600,84 +591,13 @@ export default function SalespersonDetail() {
               </div>
             )}
 
-            {/* 投稿フォーム */}
-            <div className="mt-6 pt-6 border-t border-stone-200">
-              <p className="text-sm font-bold text-gray-700 mb-1">
-                {ownReview ? '口コミを更新する' : '口コミを投稿する'}
+            {/* 口コミ投稿案内 */}
+            <div className="mt-5 pt-5 border-t border-stone-100">
+              <p className="text-xs text-gray-400 leading-relaxed">
+                この営業マンとすでに家づくりを進めている方は、専用QRまたは
+                <Link href="/mypage" className="text-orange-500 hover:underline mx-0.5">マイページ</Link>
+                から口コミを投稿できます。
               </p>
-              {ownReview && (
-                <p className="text-xs text-gray-400 mb-3">更新すると再度確認が必要になります</p>
-              )}
-              {submitDone && (
-                <p className="text-sm text-green-600 mb-3">投稿しました。確認後に公開されます。</p>
-              )}
-              {submitError && (
-                <p className="text-sm text-red-500 mb-3">{submitError}</p>
-              )}
-              <div className="space-y-4">
-                <div>
-                  <p className="text-xs text-gray-400 mb-2">評価 <span className="text-red-400">*</span></p>
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        onClick={() => setFormRating(star)}
-                        className={`text-2xl transition ${star <= formRating ? 'text-amber-400' : 'text-gray-300'}`}
-                      >
-                        ★
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-2">打ち合わせ状況（任意）</p>
-                  <div className="flex flex-wrap gap-2">
-                    {MEETING_STATUSES.map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => setFormMeetingStatus(formMeetingStatus === s ? '' : s)}
-                        className={`text-xs px-3 py-1.5 rounded-full border transition ${
-                          formMeetingStatus === s
-                            ? 'bg-orange-500 text-white border-orange-500'
-                            : 'bg-white text-gray-500 border-stone-200 hover:border-orange-300'
-                        }`}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-2">コメント <span className="text-red-400">*</span></p>
-                  <textarea
-                    value={formContent}
-                    onChange={(e) => setFormContent(e.target.value)}
-                    placeholder="この営業マンの対応はいかがでしたか？"
-                    rows={4}
-                    className="w-full text-sm border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300"
-                  />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-400 mb-2">成約価格（任意）</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={formPrice}
-                      onChange={(e) => setFormPrice(e.target.value)}
-                      placeholder="例: 3500"
-                      className="w-40 text-sm border border-stone-200 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                    />
-                    <span className="text-sm text-gray-500">万円</span>
-                  </div>
-                </div>
-                <button
-                  onClick={handleReviewSubmit}
-                  disabled={formRating === 0 || !formContent.trim() || submitting}
-                  className="w-full bg-orange-500 hover:bg-orange-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl transition text-sm"
-                >
-                  {submitting ? '送信中...' : ownReview ? '口コミを更新する' : '口コミを投稿する'}
-                </button>
-              </div>
             </div>
           </div>
           </>
@@ -756,11 +676,11 @@ export default function SalespersonDetail() {
           </>
         )}
 
-        {/* CTAエリア */}
+        {/* 詳細開示CTA（未開示の場合のみ） */}
         {!unlockedData && (
           <div className="bg-gray-900 rounded-2xl p-6">
-            <p className="text-white font-bold text-base mb-1">この営業マンにオファーする</p>
-            <p className="text-gray-400 text-xs mb-4">受諾後に実名・連絡先・詳細プロフィールが開示されます</p>
+            <p className="text-white font-bold text-base mb-1">実名・自己紹介・詳細を見る</p>
+            <p className="text-gray-400 text-xs mb-4">¥1,000 で実名・詳細プロフィール・口コミ全文が開示されます</p>
             {payError && <p className="text-red-400 text-xs mb-3">{payError}</p>}
             {user ? (
               <button
@@ -768,18 +688,121 @@ export default function SalespersonDetail() {
                 disabled={paying}
                 className="w-full bg-orange-500 hover:bg-orange-400 disabled:bg-orange-300 text-white font-bold py-4 rounded-xl transition text-base"
               >
-                {paying ? '決済ページへ移動中...' : '¥1,000 でオファーする'}
+                {paying ? '決済ページへ移動中...' : '¥1,000 で詳細を開示する'}
               </button>
             ) : (
               <button
                 onClick={() => router.push('/auth/login')}
                 className="w-full bg-stone-600 hover:bg-stone-500 text-white font-bold py-4 rounded-xl transition text-base"
               >
-                ログインしてオファーする
+                ログインして開示する
               </button>
             )}
           </div>
         )}
+
+        {/* オファー（相談）フォーム */}
+        <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
+          <p className="text-sm font-bold text-gray-800 mb-1">この営業マンに相談したい</p>
+          <p className="text-xs text-gray-500 mb-4">検討エリア・時期・相談内容を送ると、営業マン側に届きます。</p>
+
+          {!user ? (
+            <div className="text-center py-4">
+              <p className="text-sm text-gray-500 mb-3">相談リクエストの送信にはログインが必要です</p>
+              <button
+                onClick={() => router.push('/auth/login')}
+                className="bg-teal-500 hover:bg-teal-400 text-white font-bold px-6 py-3 rounded-xl text-sm transition"
+              >
+                ログインして相談する
+              </button>
+            </div>
+          ) : offerDone ? (
+            <div className="text-center py-6 space-y-2">
+              <span className="text-3xl">✅</span>
+              <p className="text-sm font-bold text-gray-700">相談リクエストを送信しました</p>
+              <p className="text-xs text-gray-400">営業マン側で内容を確認し、ご連絡差し上げます。</p>
+            </div>
+          ) : !showOfferForm ? (
+            <button
+              onClick={() => setShowOfferForm(true)}
+              className="w-full bg-teal-500 hover:bg-teal-400 text-white font-bold py-3.5 rounded-xl text-sm transition"
+            >
+              相談リクエストを送る
+            </button>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-gray-500 font-medium mb-1 block">検討エリア（任意）</label>
+                <input
+                  type="text" value={offerArea} onChange={(e) => setOfferArea(e.target.value)}
+                  placeholder="例: 横浜市青葉区"
+                  className="w-full text-sm border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-medium mb-1.5 block">建築予定時期（任意）</label>
+                <div className="flex flex-wrap gap-2">
+                  {OFFER_TIMINGS.map((t) => (
+                    <button key={t} type="button"
+                      onClick={() => setOfferTiming(offerTiming === t ? '' : t)}
+                      className={`text-xs px-3 py-1.5 rounded-full border transition ${offerTiming === t ? 'bg-teal-500 text-white border-teal-500' : 'bg-white text-gray-500 border-stone-200 hover:border-teal-300'}`}>
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-medium mb-1 block">
+                  相談内容 <span className="text-red-400">*</span>
+                </label>
+                <textarea
+                  value={offerMessage} onChange={(e) => setOfferMessage(e.target.value)}
+                  placeholder="家づくりの希望、不安なこと、相談したいことを自由に書いてください"
+                  rows={4}
+                  className="w-full text-sm border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-200"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-medium mb-1 block">
+                  お名前 <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text" value={offerName} onChange={(e) => setOfferName(e.target.value)}
+                  placeholder="山田 太郎"
+                  className="w-full text-sm border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 font-medium mb-1 block">
+                  連絡先メールアドレス <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="email" value={offerEmail} onChange={(e) => setOfferEmail(e.target.value)}
+                  placeholder="example@mail.com"
+                  className="w-full text-sm border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                />
+                <p className="text-xs text-gray-400 mt-1">営業マンへの連絡先として使用します。電話番号は不要です。</p>
+              </div>
+              {offerError && <p className="text-sm text-red-500">{offerError}</p>}
+              <div className="flex gap-3">
+                <button
+                  type="button" onClick={() => setShowOfferForm(false)}
+                  className="flex-1 bg-stone-100 hover:bg-stone-200 text-gray-600 font-bold py-3 rounded-xl text-sm transition"
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOfferSubmit}
+                  disabled={offerSending || !offerMessage.trim() || !offerName.trim() || !offerEmail.trim()}
+                  className="flex-1 bg-teal-500 hover:bg-teal-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl text-sm transition"
+                >
+                  {offerSending ? '送信中...' : '相談リクエストを送る'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
       </div>
     </main>
