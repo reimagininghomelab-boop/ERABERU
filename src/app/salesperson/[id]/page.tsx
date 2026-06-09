@@ -736,7 +736,7 @@ export default function SalespersonDetail() {
                 <input
                   type="text" value={offerArea} onChange={(e) => setOfferArea(e.target.value)}
                   placeholder="例: 横浜市青葉区"
-                  className="w-full text-sm border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  className="w-full text-sm text-gray-800 bg-white border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 placeholder:text-gray-400"
                 />
               </div>
               <div>
@@ -759,7 +759,7 @@ export default function SalespersonDetail() {
                   value={offerMessage} onChange={(e) => setOfferMessage(e.target.value)}
                   placeholder="家づくりの希望、不安なこと、相談したいことを自由に書いてください"
                   rows={4}
-                  className="w-full text-sm border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  className="w-full text-sm text-gray-800 bg-white border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-200 placeholder:text-gray-400"
                 />
               </div>
               <div>
@@ -769,7 +769,7 @@ export default function SalespersonDetail() {
                 <input
                   type="text" value={offerName} onChange={(e) => setOfferName(e.target.value)}
                   placeholder="山田 太郎"
-                  className="w-full text-sm border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  className="w-full text-sm text-gray-800 bg-white border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 placeholder:text-gray-400"
                 />
               </div>
               <div>
@@ -779,7 +779,7 @@ export default function SalespersonDetail() {
                 <input
                   type="email" value={offerEmail} onChange={(e) => setOfferEmail(e.target.value)}
                   placeholder="example@mail.com"
-                  className="w-full text-sm border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                  className="w-full text-sm text-gray-800 bg-white border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 placeholder:text-gray-400"
                 />
                 <p className="text-xs text-gray-400 mt-1">営業マンへの連絡先として使用します。電話番号は不要です。</p>
               </div>

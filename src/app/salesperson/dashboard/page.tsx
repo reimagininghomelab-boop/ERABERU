@@ -9,7 +9,7 @@ import { MUNICIPALITIES, PREFECTURES } from '@/lib/municipalities'
 import Cropper from 'react-easy-crop'
 import type { Area } from 'react-easy-crop'
 
-type Tab = 'reviews' | 'settings' | 'preview'
+type Tab = 'reviews' | 'settings' | 'preview' | 'offers'
 
 const PHASE_META = [
   { key: 'pre_contract', label: '契約前', badge: 'bg-teal-50 text-teal-600' },
@@ -49,6 +49,7 @@ export default function SalespersonDashboard() {
   const [qrToken, setQrToken] = useState<string>('')
   const [qrReissuing, setQrReissuing] = useState(false)
   const [qrCopied, setQrCopied] = useState(false)
+  const [offersList, setOffersList] = useState<any[]>([])
 
   // settings form state
   const [form, setForm] = useState<any>({})
@@ -114,6 +115,13 @@ export default function SalespersonDashboard() {
         .neq('status', 'superseded')
         .order('created_at', { ascending: false })
       if (ar) setAnonReviews(ar)
+
+      const { data: offersData } = await supabase
+        .from('offers')
+        .select('id, area, timing, message, contact_name, contact_email, status, created_at')
+        .eq('salesperson_id', own.id)
+        .order('created_at', { ascending: false })
+      if (offersData) setOffersList(offersData)
 
       setLoading(false)
     }
@@ -311,9 +319,10 @@ export default function SalespersonDashboard() {
         </div>
 
         {/* タブ */}
-        <div className="flex bg-stone-200 rounded-xl p-1 gap-1">
+        <div className="flex bg-stone-200 rounded-xl p-1 gap-1 flex-wrap">
           {([
             { key: 'reviews', label: '口コミ管理' },
+            { key: 'offers', label: `相談リクエスト${offersList.filter(o => o.status === 'new').length > 0 ? ` (${offersList.filter(o => o.status === 'new').length})` : ''}` },
             { key: 'settings', label: 'プロフィール設定' },
             { key: 'preview', label: '施主プレビュー' },
           ] as { key: Tab; label: string }[]).map((t) => (
@@ -706,6 +715,51 @@ export default function SalespersonDashboard() {
                 </p>
               )}
             </div>
+          </div>
+        )}
+
+        {/* ===== 相談リクエストタブ ===== */}
+        {tab === 'offers' && (
+          <div className="space-y-4">
+            {offersList.length === 0 ? (
+              <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-10 text-center space-y-2">
+                <p className="text-2xl">📬</p>
+                <p className="text-sm font-bold text-gray-600">相談リクエストはまだありません</p>
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  施主が「相談したい」を送信すると、ここに表示されます。
+                </p>
+              </div>
+            ) : (
+              offersList.map((o) => (
+                <div key={o.id} className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">{o.contact_name}</p>
+                      <p className="text-xs text-gray-500">{new Date(o.created_at).toLocaleDateString('ja-JP')}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      o.status === 'new' ? 'bg-teal-100 text-teal-700' : 'bg-stone-100 text-stone-500'
+                    }`}>
+                      {o.status === 'new' ? '未対応' : '対応済み'}
+                    </span>
+                  </div>
+                  {(o.area || o.timing) && (
+                    <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+                      {o.area && <span>📍 {o.area}</span>}
+                      {o.timing && <span>🕐 {o.timing}</span>}
+                    </div>
+                  )}
+                  <div className="bg-white rounded-xl border border-stone-100 px-4 py-3">
+                    <p className="text-xs text-gray-400 mb-1">相談内容</p>
+                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{o.message}</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-stone-100 px-4 py-3">
+                    <p className="text-xs text-gray-400 mb-1">連絡先</p>
+                    <p className="text-sm text-gray-700">{o.contact_email}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
 

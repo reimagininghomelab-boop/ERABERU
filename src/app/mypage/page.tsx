@@ -5,14 +5,14 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
 
-const PHASES = [
-  { value: 'pre_contract', label: '契約前', icon: '📋', note: 'QRコードから投稿' },
-  { value: 'post_contract', label: '契約後', icon: '✍️' },
-  { value: 'after_start', label: '着工後', icon: '🏗️' },
-  { value: 'after_handover', label: '引渡後', icon: '🏠' },
+const REVIEW_PHASES = [
+  { value: 'pre_contract', label: '契約前', icon: '📋', qrOnly: true },
+  { value: 'post_contract', label: '契約後', icon: '✍️', qrOnly: false },
+  { value: 'after_start', label: '着工後', icon: '🏗️', qrOnly: false },
+  { value: 'after_handover', label: '引渡後', icon: '🏠', qrOnly: false },
 ] as const
 
-type PhaseValue = typeof PHASES[number]['value']
+type PhaseValue = typeof REVIEW_PHASES[number]['value']
 
 type Review = {
   id: string
@@ -24,6 +24,16 @@ type Review = {
   created_at: string
 }
 
+type Offer = {
+  id: string
+  salesperson_id: string
+  area: string | null
+  timing: string | null
+  message: string
+  status: string
+  created_at: string
+}
+
 type Salesperson = {
   id: string
   company_name: string
@@ -31,18 +41,21 @@ type Salesperson = {
   profile_image_url: string | null
 }
 
-type SalespersonGroup = {
+// 施主が接点を持った全営業（オファーまたは口コミ）
+type ContactGroup = {
   salesperson: Salesperson
-  submittedPhases: PhaseValue[]
-  availablePhases: { value: PhaseValue; label: string; icon: string }[]
+  offers: Offer[]
   reviews: Review[]
+  availablePhases: { value: PhaseValue; label: string; icon: string }[]
+  hasReview: boolean
+  hasOffer: boolean
 }
 
 export default function MyPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [groups, setGroups] = useState<SalespersonGroup[]>([])
-  const [unlockedSalespersonIds, setUnlockedSalespersonIds] = useState<Set<string>>(new Set())
+  const [groups, setGroups] = useState<ContactGroup[]>([])
+  const [activeTab, setActiveTab] = useState<'all' | 'offers' | 'reviews'>('all')
 
   useEffect(() => {
     const supabase = createClient()
@@ -50,26 +63,36 @@ export default function MyPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/auth/login'); return }
 
-      // 自分が投稿した口コミ（superseded を除く）
-      const { data: myReviews } = await supabase
-        .from('anonymous_reviews')
-        .select('id, salesperson_id, phase, rating, content, status, created_at')
-        .eq('user_id', user.id)
-        .neq('status', 'superseded')
-        .order('created_at', { ascending: false })
+      const [
+        { data: myReviews },
+        { data: myOffers },
+      ] = await Promise.all([
+        supabase
+          .from('anonymous_reviews')
+          .select('id, salesperson_id, phase, rating, content, status, created_at')
+          .eq('user_id', user.id)
+          .neq('status', 'superseded')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('offers')
+          .select('id, salesperson_id, area, timing, message, status, created_at')
+          .eq('buyer_id', user.id)
+          .order('created_at', { ascending: false }),
+      ])
 
-      // 開示済み営業マンIDを取得
-      const { data: unlocked } = await supabase
-        .from('unlocked_profiles')
-        .select('agent_id')
-        .eq('buyer_id', user.id)
-      const unlockedIds = new Set((unlocked ?? []).map((u: any) => u.agent_id as string))
-      setUnlockedSalespersonIds(unlockedIds)
+      const reviewList: Review[] = myReviews ?? []
+      const offerList: Offer[] = myOffers ?? []
 
-      if (!myReviews || myReviews.length === 0) { setLoading(false); return }
+      // 接点を持った営業IDを集約
+      const spIds = [
+        ...new Set([
+          ...reviewList.map((r) => r.salesperson_id),
+          ...offerList.map((o) => o.salesperson_id),
+        ]),
+      ]
 
-      // 対象の営業マン情報を取得
-      const spIds = [...new Set(myReviews.map((r) => r.salesperson_id))]
+      if (spIds.length === 0) { setLoading(false); return }
+
       const { data: salespeople } = await supabase
         .from('safe_salesperson_profiles')
         .select('id, company_name, name_initials, profile_image_url')
@@ -78,24 +101,25 @@ export default function MyPage() {
       const spMap: Record<string, Salesperson> = {}
       ;(salespeople ?? []).forEach((sp: Salesperson) => { spMap[sp.id] = sp })
 
-      // 営業マンごとにグループ化
-      const groupMap: Record<string, Review[]> = {}
-      myReviews.forEach((r: Review) => {
-        if (!groupMap[r.salesperson_id]) groupMap[r.salesperson_id] = []
-        groupMap[r.salesperson_id].push(r)
-      })
+      const writablePhases = REVIEW_PHASES.filter((p) => !p.qrOnly)
 
-      const writablePhases = PHASES.filter((p) => p.value !== 'pre_contract')
-
-      const result: SalespersonGroup[] = spIds
+      const result: ContactGroup[] = spIds
         .filter((id) => spMap[id])
         .map((id) => {
-          const reviews = groupMap[id] ?? []
-          const submittedPhases = reviews.map((r) => r.phase)
+          const reviews = reviewList.filter((r) => r.salesperson_id === id)
+          const offers = offerList.filter((o) => o.salesperson_id === id)
+          const submittedPhaseValues = reviews.map((r) => r.phase)
           const availablePhases = writablePhases
-            .filter((p) => !submittedPhases.includes(p.value))
-            .map((p) => ({ value: p.value, label: p.label, icon: p.icon ?? '' }))
-          return { salesperson: spMap[id], submittedPhases, availablePhases, reviews }
+            .filter((p) => !submittedPhaseValues.includes(p.value))
+            .map((p) => ({ value: p.value, label: p.label, icon: p.icon }))
+          return {
+            salesperson: spMap[id],
+            offers,
+            reviews,
+            availablePhases,
+            hasReview: reviews.length > 0,
+            hasOffer: offers.length > 0,
+          }
         })
 
       setGroups(result)
@@ -106,74 +130,136 @@ export default function MyPage() {
 
   if (loading) return <div className="min-h-screen bg-stone-100 flex items-center justify-center text-gray-400">読み込み中...</div>
 
+  const filteredGroups = activeTab === 'offers'
+    ? groups.filter((g) => g.hasOffer)
+    : activeTab === 'reviews'
+    ? groups.filter((g) => g.hasReview)
+    : groups
+
+  // 相談済みで口コミ未投稿の営業数
+  const pendingReviewCount = groups.filter((g) => g.hasOffer && !g.hasReview).length
+
   return (
     <main className="min-h-screen bg-stone-100">
       <Header />
 
       <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-800">マイページ</h1>
-          <p className="text-xs text-gray-500 mt-1">投稿済み口コミの確認と追加投稿ができます</p>
+          <h1 className="text-xl font-bold text-gray-800">相談・口コミ管理</h1>
+          <p className="text-xs text-gray-500 mt-1">相談した営業・投稿済み口コミを確認できます</p>
         </div>
 
-        {groups.length === 0 ? (
+        {/* 口コミ投稿促進バナー */}
+        {pendingReviewCount > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4 space-y-2">
+            <p className="text-sm font-bold text-amber-700">
+              相談した営業の口コミを残しませんか？
+            </p>
+            <p className="text-xs text-amber-600 leading-relaxed">
+              {pendingReviewCount}件の相談済み営業の口コミがまだありません。口コミを投稿すると、検索時に接点のある営業がメイン一覧から外れ、新しい営業を探しやすくなります。
+            </p>
+          </div>
+        )}
+
+        {/* タブ */}
+        <div className="flex bg-stone-200 rounded-xl p-1 gap-1">
+          {([
+            { key: 'all', label: `すべて (${groups.length})` },
+            { key: 'offers', label: `相談 (${groups.filter(g => g.hasOffer).length})` },
+            { key: 'reviews', label: `口コミ (${groups.filter(g => g.hasReview).length})` },
+          ] as { key: typeof activeTab; label: string }[]).map((t) => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
+              className={`flex-1 text-xs font-medium py-2 rounded-lg transition ${activeTab === t.key ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {filteredGroups.length === 0 ? (
           <div className="bg-white rounded-2xl border border-stone-200 p-10 text-center space-y-3">
             <p className="text-3xl">📋</p>
-            <p className="text-sm font-bold text-gray-600">まだ口コミを投稿していません</p>
-            <p className="text-xs text-gray-400 leading-relaxed">
-              担当営業から受け取ったQRコードを読み取るか、<br />
-              担当営業のプロフィールページから口コミを投稿できます。
+            <p className="text-sm font-bold text-gray-600">
+              {activeTab === 'all' ? 'まだ接点のある営業マンがいません' :
+               activeTab === 'offers' ? '相談済みの営業マンはいません' :
+               '口コミ投稿済みの営業マンはいません'}
             </p>
-            <Link href="/search" className="inline-block mt-2 text-sm text-teal-600 hover:underline">
-              営業マンを探す →
-            </Link>
+            {activeTab === 'all' && (
+              <Link href="/search" className="inline-block text-sm text-teal-600 hover:underline">
+                営業マンを探す →
+              </Link>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
-            {groups.map(({ salesperson, submittedPhases, availablePhases, reviews }) => {
-              const isUnlocked = unlockedSalespersonIds.has(salesperson.id)
-              const displayName = salesperson.name_initials ? `${salesperson.name_initials} さん` : '---'
-
-              return (
-                <div key={salesperson.id} className="bg-white rounded-2xl border border-stone-200 p-5 space-y-4">
-                  {/* 営業マン情報 */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full overflow-hidden bg-stone-100 flex items-center justify-center shrink-0">
-                        {isUnlocked && salesperson.profile_image_url
-                          ? <img src={salesperson.profile_image_url} alt="" className="w-full h-full object-cover" />
-                          : <span className="text-2xl">👤</span>}
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-400">{salesperson.company_name}</p>
-                        <p className="text-sm font-bold text-gray-800">{displayName}</p>
+            {filteredGroups.map(({ salesperson, offers, reviews, availablePhases, hasOffer, hasReview }) => (
+              <div key={salesperson.id} className="bg-white rounded-2xl border border-stone-200 p-5 space-y-4">
+                {/* 営業マン情報 */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full overflow-hidden bg-stone-100 flex items-center justify-center shrink-0">
+                      {salesperson.profile_image_url
+                        ? <img src={salesperson.profile_image_url} alt="" className="w-full h-full object-cover" />
+                        : <span className="text-2xl">👤</span>}
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400">{salesperson.company_name}</p>
+                      <p className="text-sm font-bold text-gray-800">
+                        {salesperson.name_initials ? `${salesperson.name_initials} さん` : '---'}
+                      </p>
+                      <div className="flex gap-1.5 mt-0.5">
+                        {hasOffer && <span className="text-xs bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full">相談済み</span>}
+                        {hasReview && <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full">口コミ投稿済み</span>}
                       </div>
                     </div>
-                    <Link
-                      href={`/salesperson/${salesperson.id}`}
-                      className="text-xs text-teal-600 border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition"
-                    >
-                      プロフィールへ
-                    </Link>
                   </div>
+                  <Link href={`/salesperson/${salesperson.id}`}
+                    className="text-xs text-teal-600 border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition shrink-0">
+                    プロフィール
+                  </Link>
+                </div>
 
-                  {/* 投稿済みフェーズ */}
+                {/* 相談リクエスト一覧 */}
+                {offers.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-gray-500">相談リクエスト</p>
+                    {offers.map((o) => (
+                      <div key={o.id} className="bg-stone-50 rounded-xl border border-stone-100 px-4 py-3 text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-400">{new Date(o.created_at).toLocaleDateString('ja-JP')}</span>
+                          <span className={`px-2 py-0.5 rounded-full font-medium ${o.status === 'new' ? 'bg-teal-100 text-teal-700' : 'bg-stone-100 text-stone-500'}`}>
+                            {o.status === 'new' ? '送信済み' : '対応済み'}
+                          </span>
+                        </div>
+                        {(o.area || o.timing) && (
+                          <p className="text-gray-500">
+                            {o.area && `📍 ${o.area}`}{o.area && o.timing && '　'}{o.timing && `🕐 ${o.timing}`}
+                          </p>
+                        )}
+                        <p className="text-gray-600 line-clamp-2">{o.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 口コミ投稿済み */}
+                {reviews.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-bold text-gray-500">投稿済み口コミ</p>
                     {reviews.map((r) => {
-                      const phase = PHASES.find((p) => p.value === r.phase)
+                      const phase = REVIEW_PHASES.find((p) => p.value === r.phase)
                       return (
-                        <div key={r.id} className="bg-stone-50 rounded-xl border border-stone-100 p-3">
+                        <div key={r.id} className="bg-stone-50 rounded-xl border border-stone-100 px-4 py-3">
                           <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-xs bg-white border border-stone-200 text-stone-600 px-2 py-0.5 rounded-full">
+                            <span className="text-xs text-stone-600 border border-stone-200 bg-white px-2 py-0.5 rounded-full">
                               {phase?.icon} {phase?.label ?? r.phase}
                             </span>
-                            {r.status === 'visible'
-                              ? <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">公開中</span>
-                              : r.status === 'hidden'
-                              ? <span className="text-xs bg-stone-100 text-stone-500 px-2 py-0.5 rounded-full">非表示</span>
-                              : <span className="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">確認待ち</span>
-                            }
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              r.status === 'visible' ? 'bg-green-100 text-green-600' :
+                              r.status === 'hidden' ? 'bg-stone-100 text-stone-500' :
+                              'bg-amber-100 text-amber-600'
+                            }`}>
+                              {r.status === 'visible' ? '公開中' : r.status === 'hidden' ? '非表示' : '確認待ち'}
+                            </span>
                           </div>
                           {r.rating && (
                             <p className="text-xs text-amber-400 mb-1">
@@ -181,50 +267,58 @@ export default function MyPage() {
                             </p>
                           )}
                           <p className="text-sm text-gray-700 leading-relaxed line-clamp-3">{r.content}</p>
-                          <p className="text-xs text-gray-400 mt-1.5">
-                            {new Date(r.created_at).toLocaleDateString('ja-JP')}
-                          </p>
+                          <p className="text-xs text-gray-400 mt-1.5">{new Date(r.created_at).toLocaleDateString('ja-JP')}</p>
                         </div>
                       )
                     })}
                   </div>
+                )}
+
+                {/* 口コミ投稿入口 */}
+                <div className="space-y-2">
+                  {/* 相談済みで口コミ未投稿の場合：最初の口コミ促進 */}
+                  {hasOffer && !hasReview && (
+                    <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                      <p className="text-xs text-amber-700 mb-2 leading-relaxed">
+                        この営業マンにやりとりした印象を口コミとして残せます。
+                      </p>
+                      <Link href={`/review/write/${salesperson.id}`}
+                        className="inline-block text-xs bg-amber-500 hover:bg-amber-400 text-white font-bold px-4 py-2 rounded-lg transition">
+                        やりとりした印象を投稿する
+                      </Link>
+                    </div>
+                  )}
 
                   {/* 追加投稿できるフェーズ */}
-                  {availablePhases.length > 0 && (
-                    <div className="pt-3 border-t border-stone-100 space-y-2">
+                  {availablePhases.length > 0 && hasReview && (
+                    <div className="space-y-1.5">
                       <p className="text-xs font-bold text-gray-500">追加で投稿できるフェーズ</p>
                       {availablePhases.map((p) => (
-                        <Link
-                          key={p.value}
-                          href={`/review/write/${salesperson.id}`}
-                          className="flex items-center justify-between px-4 py-3 rounded-xl border border-teal-100 bg-teal-50 hover:bg-teal-100 transition"
-                        >
-                          <span className="text-sm text-teal-700 font-medium">
-                            {p.icon} {p.label}の口コミを投稿する
-                          </span>
+                        <Link key={p.value} href={`/review/write/${salesperson.id}`}
+                          className="flex items-center justify-between px-4 py-3 rounded-xl border border-teal-100 bg-teal-50 hover:bg-teal-100 transition">
+                          <span className="text-sm text-teal-700 font-medium">{p.icon} {p.label}の口コミを投稿する</span>
                           <span className="text-teal-500 text-sm">→</span>
                         </Link>
                       ))}
                     </div>
                   )}
 
-                  {availablePhases.length === 0 && (
-                    <div className="pt-3 border-t border-stone-100">
-                      <p className="text-xs text-gray-400 text-center">すべてのフェーズの口コミを投稿済みです ✓</p>
-                    </div>
+                  {/* 全フェーズ投稿済み */}
+                  {availablePhases.length === 0 && hasReview && (
+                    <p className="text-xs text-gray-400 text-center py-1">すべてのフェーズの口コミを投稿済みです ✓</p>
                   )}
                 </div>
-              )
-            })}
+              </div>
+            ))}
           </div>
         )}
 
-        {/* 口コミについて */}
+        {/* 使い方案内 */}
         <div className="bg-stone-50 rounded-xl border border-stone-200 px-4 py-3">
           <p className="text-xs text-gray-500 leading-relaxed">
             <span className="font-bold text-gray-600">口コミ投稿について：</span>
             契約前の口コミは営業担当から受け取ったQRコードから投稿できます。
-            契約後・着工後・引渡後の口コミはこのページまたは営業プロフィールページから投稿できます。
+            相談・口コミ後・着工後・引渡後はこのページから投稿できます。
           </p>
         </div>
       </div>

@@ -209,7 +209,7 @@ function AiSearchModal({ onClose, onSearchComplete, agents }: {
               disabled={isBusy}
               placeholder="希望や不安を自由に書いてください"
               rows={2}
-              className="flex-1 text-sm border border-stone-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-orange-200 disabled:opacity-50"
+              className="flex-1 text-sm text-gray-800 bg-white border border-stone-200 rounded-xl px-3 py-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-orange-200 disabled:opacity-50 placeholder:text-gray-400"
             />
             <button onClick={handleSend} disabled={isBusy || !input.trim()}
               className="bg-orange-500 hover:bg-orange-400 disabled:bg-gray-200 text-white font-bold px-4 rounded-xl transition text-sm shrink-0">
@@ -420,6 +420,13 @@ function SearchContent() {
   const [showLoginGate, setShowLoginGate] = useState(false)
   const [aiMode, setAiMode] = useState<{ query: string; results: AiMatchResult[] } | null>(null)
   const [loading, setLoading] = useState(true)
+  // ログイン施主の接点済み営業（オファー or 口コミ）
+  const [contactedIds, setContactedIds] = useState<Set<string>>(new Set())
+  // オファー済みで口コミ未投稿の営業（バナー表示用）
+  const [pendingReviewCount, setPendingReviewCount] = useState(0)
+  const [showContactedSection, setShowContactedSection] = useState(false)
+  // 口コミ促進バナーを閉じたか
+  const [bannerDismissed, setBannerDismissed] = useState(false)
 
   const selectedIdRef = useRef(selectedId)
   selectedIdRef.current = selectedId
@@ -482,12 +489,28 @@ function SearchContent() {
         }
       }
       if (user) {
-        const { data: unlocked } = await supabase.from('salesperson_profiles').select('id, real_name, family_name, given_name')
+        const [
+          { data: unlocked },
+          { data: myReviews },
+          { data: myOffers },
+        ] = await Promise.all([
+          supabase.from('salesperson_profiles').select('id, real_name, family_name, given_name'),
+          supabase.from('anonymous_reviews').select('salesperson_id').eq('user_id', user.id).neq('status', 'superseded'),
+          supabase.from('offers').select('salesperson_id').eq('buyer_id', user.id),
+        ])
         if (unlocked) {
           const map: Record<string, any> = {}
           unlocked.forEach((u) => { map[u.id] = u })
           setUnlockedMap(map)
         }
+        // 接点済み営業の集計
+        const reviewedIds = new Set((myReviews ?? []).map((r: any) => r.salesperson_id as string))
+        const offeredIds = new Set((myOffers ?? []).map((o: any) => o.salesperson_id as string))
+        const contacted = new Set([...reviewedIds, ...offeredIds])
+        setContactedIds(contacted)
+        // オファー済みで口コミ未投稿数
+        const pendingCount = [...offeredIds].filter((id) => !reviewedIds.has(id)).length
+        setPendingReviewCount(pendingCount)
       }
       setLoading(false)
     }
@@ -523,23 +546,31 @@ function SearchContent() {
     })
   }, [agents, unlockedMap, keyword, filterPrefecture, filterSpecialty, filterQualification])
 
-  const displayedAgents = useMemo(() => {
-    // AIモードが優先
+  // メイン表示（接点済みを除外）・接点済みを分離
+  const { mainAgents, contactedAgents } = useMemo(() => {
+    let ordered = filteredAgents
     if (aiMode) {
       const aiOrder = aiMode.results.map((r) => r.agent_id)
       const aiAgents = aiOrder.map((id) => filteredAgents.find((a) => a.id === id)).filter(Boolean) as any[]
       const rest = filteredAgents.filter((a) => !aiOrder.includes(a.id))
-      return [...aiAgents, ...rest]
-    }
-    // スタイルフィルターモード
-    if (styleParam && STYLE_QUADRANT[styleParam]) {
+      ordered = [...aiAgents, ...rest]
+    } else if (styleParam && STYLE_QUADRANT[styleParam]) {
       const targetQ = STYLE_QUADRANT[styleParam]
       const matched = filteredAgents.filter((a) => agentQuadrantKey(a) === targetQ)
       const rest = filteredAgents.filter((a) => agentQuadrantKey(a) !== targetQ)
-      return [...matched, ...rest]
+      ordered = [...matched, ...rest]
     }
-    return filteredAgents
-  }, [filteredAgents, aiMode, styleParam])
+    // ログイン施主のみ接点済みを分離（未ログインは全件メイン）
+    if (isLoggedIn && contactedIds.size > 0) {
+      return {
+        mainAgents: ordered.filter((a) => !contactedIds.has(a.id)),
+        contactedAgents: ordered.filter((a) => contactedIds.has(a.id)),
+      }
+    }
+    return { mainAgents: ordered, contactedAgents: [] }
+  }, [filteredAgents, aiMode, styleParam, isLoggedIn, contactedIds])
+
+  const displayedAgents = mainAgents
 
   const getAiMatchReason = (agentId: string): string | null => {
     if (!aiMode) return null
@@ -647,9 +678,41 @@ function SearchContent() {
         </div>
         <p className="text-xs text-gray-400 mt-2 px-1">
           {displayedAgents.length}人の営業マンが見つかりました
-          {displayedAgents.length !== agents.length && <span className="ml-1">（全{agents.length}人中）</span>}
+          {contactedAgents.length > 0 && (
+            <span className="ml-1">（相談・口コミ済み {contactedAgents.length}人を除く）</span>
+          )}
         </p>
       </div>
+
+      {/* 口コミ促進バナー（ログイン施主・相談済みで口コミ未投稿がいる場合） */}
+      {isLoggedIn && pendingReviewCount > 0 && !bannerDismissed && (
+        <div className="max-w-6xl mx-auto px-4 md:px-6">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-2 flex-1">
+                <p className="text-sm font-bold text-amber-700">先に、相談した営業の口コミを残しませんか？</p>
+                <p className="text-xs text-amber-600 leading-relaxed">
+                  口コミを投稿すると、その営業が検索のメイン一覧から外れ、まだ接点のない営業を探しやすくなります。
+                </p>
+                <div className="flex gap-2 flex-wrap pt-1">
+                  <Link href="/mypage"
+                    className="text-xs bg-amber-500 hover:bg-amber-400 text-white font-bold px-3 py-1.5 rounded-lg transition">
+                    口コミを投稿する
+                  </Link>
+                  <Link href="/mypage"
+                    className="text-xs border border-amber-300 text-amber-700 hover:bg-amber-100 font-medium px-3 py-1.5 rounded-lg transition">
+                    相談・口コミ管理を見る
+                  </Link>
+                  <button onClick={() => setBannerDismissed(true)}
+                    className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1.5 transition">
+                    あとで
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 営業カード一覧 */}
       <div className="max-w-6xl mx-auto px-4 md:px-6 mt-3">
@@ -819,6 +882,46 @@ function SearchContent() {
           })}
         </div>
       </div>
+
+      {/* 接点済み営業セクション（折りたたみ） */}
+      {contactedAgents.length > 0 && (
+        <div className="max-w-6xl mx-auto px-4 md:px-6 pb-8">
+          <button
+            onClick={() => setShowContactedSection((v) => !v)}
+            className="w-full flex items-center justify-between px-5 py-3.5 bg-stone-100 hover:bg-stone-200 rounded-2xl text-sm text-gray-600 transition"
+          >
+            <span>相談・口コミ済みの営業（{contactedAgents.length}人）</span>
+            <span>{showContactedSection ? '▲ 閉じる' : '▼ 表示する'}</span>
+          </button>
+          {showContactedSection && (
+            <div className="mt-3 space-y-2.5">
+              <p className="text-xs text-gray-400 px-1">すでに接点のある営業マンです。<Link href="/mypage" className="text-teal-600 hover:underline">相談・口コミ管理</Link>から口コミを投稿できます。</p>
+              {contactedAgents.map((agent) => {
+                const unlocked = !!unlockedMap[agent.id]
+                const displayName = unlocked
+                  ? (unlockedMap[agent.id]?.real_name ?? (agent.name_initials ? `${agent.name_initials} さん` : '---'))
+                  : (agent.name_initials ? `${agent.name_initials} さん` : '---')
+                return (
+                  <div key={agent.id} className="bg-white rounded-xl border border-stone-200 px-4 py-3 flex items-center justify-between gap-3 opacity-70">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full overflow-hidden bg-stone-100 flex items-center justify-center shrink-0">
+                        {unlocked && agent.profile_image_url ? <img src={agent.profile_image_url} alt="" className="w-full h-full object-cover" /> : <span className="text-lg">👤</span>}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-400 truncate">{agent.company_name}</p>
+                        <p className="text-sm font-bold text-gray-700 truncate">{displayName}</p>
+                      </div>
+                    </div>
+                    <Link href={`/salesperson/${agent.id}`} className="text-xs text-teal-600 border border-teal-200 px-3 py-1.5 rounded-lg shrink-0 hover:bg-teal-50 transition">
+                      詳細を見る
+                    </Link>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {showLoginGate && <LoginGateModal onClose={() => setShowLoginGate(false)} />}
       {showAiModal && (
