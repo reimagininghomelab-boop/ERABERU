@@ -149,22 +149,16 @@ export default function Header({ backButton = false }: { backButton?: boolean })
           {/* 2行目: ナビ */}
           <div className="flex items-center gap-0 pb-2 -mx-1 overflow-x-auto">
             <Link
-              href="/#search"
+              href="/search"
               className="text-xs text-gray-600 whitespace-nowrap px-3 py-1 rounded-lg hover:bg-stone-100 transition"
             >
               営業を探す
             </Link>
             <Link
-              href="/#ai-search"
+              href="/search?ai=1"
               className="text-xs text-gray-600 whitespace-nowrap px-3 py-1 rounded-lg hover:bg-stone-100 transition"
             >
               AIに相談
-            </Link>
-            <Link
-              href="/#about"
-              className="text-xs text-gray-600 whitespace-nowrap px-3 py-1 rounded-lg hover:bg-stone-100 transition"
-            >
-              はじめての方へ
             </Link>
           </div>
         </div>

@@ -13,9 +13,10 @@ export default function AdminPage() {
   const [reviews, setReviews] = useState<any[]>([])
   const [agentMap, setAgentMap] = useState<Record<string, string>>({})
   const [approvingId, setApprovingId] = useState<string | null>(null)
-  const [tab, setTab] = useState<'pending' | 'approved' | 'superseded' | 'salesperson'>('pending')
+  const [tab, setTab] = useState<'pending' | 'approved' | 'superseded' | 'salesperson' | 'offers'>('pending')
   const [applications, setApplications] = useState<any[]>([])
   const [processingAppId, setProcessingAppId] = useState<string | null>(null)
+  const [offers, setOffers] = useState<any[]>([])
   const [aiGeneratingId, setAiGeneratingId] = useState<string | null>(null)
   const [aiResults, setAiResults] = useState<Record<string, { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[]; caution: string }>>({})
   const [aiErrors, setAiErrors] = useState<Record<string, string>>({})
@@ -33,7 +34,7 @@ export default function AdminPage() {
         router.replace('/')
         return
       }
-      const [{ data: reviewData }, { data: agentData }, { data: appData }, { data: anonData }] = await Promise.all([
+      const [{ data: reviewData }, { data: agentData }, { data: appData }, { data: anonData }, { data: offerData }] = await Promise.all([
         supabase
           .from('contract_reviews')
           .select('id, salesperson_id, user_id, rating, content, meeting_status, contract_price, is_approved, first_approved_at, created_at')
@@ -48,6 +49,10 @@ export default function AdminPage() {
         supabase
           .from('anonymous_reviews')
           .select('id, salesperson_id, rating, content, phase, source, status, is_approved, created_at')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('offers')
+          .select('id, buyer_id, salesperson_id, area, timing, message, contact_name, contact_email, status, created_at')
           .order('created_at', { ascending: false }),
       ])
 
@@ -72,6 +77,7 @@ export default function AdminPage() {
         setAgentMap((prev) => ({ ...prev, ...nameMap }))
       }
       if (anonData) setAnonReviews(anonData)
+      if (offerData) setOffers(offerData)
       setLoading(false)
     }
 
@@ -302,6 +308,21 @@ export default function AdminPage() {
             {applications.filter((a) => a.status === 'pending').length > 0 && (
               <span className="ml-2 bg-white text-blue-500 text-xs px-1.5 py-0.5 rounded-full font-bold">
                 {applications.filter((a) => a.status === 'pending').length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setTab('offers')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition ${
+              tab === 'offers'
+                ? 'bg-teal-500 text-white'
+                : 'bg-stone-50 text-gray-700 border border-stone-200 hover:border-teal-300'
+            }`}
+          >
+            オファー
+            {offers.filter((o) => o.status === 'new').length > 0 && (
+              <span className="ml-2 bg-white text-teal-600 text-xs px-1.5 py-0.5 rounded-full font-bold">
+                {offers.filter((o) => o.status === 'new').length}
               </span>
             )}
           </button>
@@ -596,6 +617,47 @@ export default function AdminPage() {
             </div>
           )
         })()}
+
+        {/* オファー一覧 */}
+        {tab === 'offers' && (
+          offers.length === 0 ? (
+            <div className="text-center py-20 text-gray-400">
+              <p className="text-3xl mb-3">📬</p>
+              <p className="text-sm">オファーはまだありません</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {offers.map((o) => (
+                <div key={o.id} className="bg-stone-50 rounded-2xl border border-stone-200 p-5">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-xs text-gray-400 mb-0.5">宛先営業マン</p>
+                      <p className="text-sm font-semibold text-gray-800">{agentMap[o.salesperson_id] ?? o.salesperson_id}</p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${o.status === 'new' ? 'bg-teal-100 text-teal-700' : 'bg-stone-100 text-stone-500'}`}>
+                        {o.status === 'new' ? '未対応' : o.status}
+                      </span>
+                      <p className="text-xs text-gray-400">{new Date(o.created_at).toLocaleDateString('ja-JP')}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    {o.area && <p className="text-xs text-gray-600">📍 検討エリア：{o.area}</p>}
+                    {o.timing && <p className="text-xs text-gray-600">🕐 建築予定：{o.timing}</p>}
+                    <div className="bg-white rounded-xl border border-stone-100 px-4 py-3 mt-2">
+                      <p className="text-xs text-gray-400 mb-1">相談内容</p>
+                      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{o.message}</p>
+                    </div>
+                    <div className="bg-white rounded-xl border border-stone-100 px-4 py-3">
+                      <p className="text-xs text-gray-400 mb-1">連絡先</p>
+                      <p className="text-sm text-gray-700">{o.contact_name}　{o.contact_email}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
       </div>
     </main>
   )
