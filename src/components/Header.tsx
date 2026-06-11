@@ -35,7 +35,7 @@ export default function Header({ backButton = false }: { backButton?: boolean })
   const handleSignOut = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
-    router.push('/')
+    window.location.href = '/'
   }
 
   const isLoggedIn = userType !== 'anon'

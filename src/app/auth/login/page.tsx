@@ -1,11 +1,10 @@
 'use client'
 import { useState, useEffect, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 
 function LoginContent() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const fromQr = searchParams.get('from') === 'qr'
   const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'login'
@@ -47,11 +46,25 @@ function LoginContent() {
     const supabase = createClient()
 
     if (mode === 'login') {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) {
         setError(error.message)
       } else if (!fromQr) {
-        router.push('/')
+        // セッション確立後にアカウント種別を判定して直接リダイレクト（race condition 回避）
+        const user = signInData.user
+        const redirectParam = searchParams.get('redirect')
+        if (redirectParam) {
+          window.location.href = redirectParam
+        } else if (user) {
+          const { data: sp } = await supabase
+            .from('salesperson_profiles')
+            .select('id')
+            .eq('user_id', user.id)
+            .maybeSingle()
+          window.location.href = sp ? '/salesperson/dashboard' : '/'
+        } else {
+          window.location.href = '/'
+        }
       }
       // fromQr の場合は onAuthStateChange が SIGNED_IN を拾って qrLinked = true にする
     } else if (mode === 'signup') {
