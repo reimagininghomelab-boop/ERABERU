@@ -125,17 +125,26 @@ export default function Header({ backButton = false }: { backButton?: boolean })
             </div>
             <div className="flex items-center gap-2">
               {userType === 'admin' && (
-                <Link href="/admin" className="text-xs text-orange-500 font-medium">管理</Link>
+                <>
+                  <Link href="/admin" className="text-xs text-orange-500 font-medium">管理</Link>
+                  <button onClick={handleSignOut} className="text-xs text-gray-400">ログアウト</button>
+                </>
               )}
               {userType === 'salesperson' && (
-                <Link href="/salesperson/dashboard" className="text-xs text-gray-600 border border-stone-200 px-2.5 py-1 rounded-lg">
-                  ダッシュボード
-                </Link>
+                <>
+                  <Link href="/salesperson/dashboard" className="text-xs text-gray-600 border border-stone-200 px-2.5 py-1 rounded-lg">
+                    ダッシュボード
+                  </Link>
+                  <button onClick={handleSignOut} className="text-xs text-gray-400">ログアウト</button>
+                </>
               )}
               {userType === 'buyer' && (
-                <Link href="/mypage" className="text-xs text-gray-600 border border-stone-200 px-2.5 py-1 rounded-lg">
-                  相談・口コミ
-                </Link>
+                <>
+                  <Link href="/mypage" className="text-xs text-gray-600 border border-stone-200 px-2.5 py-1 rounded-lg">
+                    相談・口コミ
+                  </Link>
+                  <button onClick={handleSignOut} className="text-xs text-gray-400">ログアウト</button>
+                </>
               )}
               {userType === 'anon' && (
                 <Link href="/auth/login" className="text-xs text-teal-600 font-semibold px-3 py-1 rounded-lg border border-teal-200 bg-teal-50">
