@@ -51,6 +51,8 @@ export default function SalespersonDashboard() {
   const [qrCopied, setQrCopied] = useState(false)
   const [offersList, setOffersList] = useState<any[]>([])
 
+  const [visibilityUpdating, setVisibilityUpdating] = useState(false)
+
   // settings form state
   const [form, setForm] = useState<any>({})
   const [saving, setSaving] = useState(false)
@@ -135,6 +137,19 @@ export default function SalespersonDashboard() {
     }
     load()
   }, [])
+
+  const handleToggleVisibility = async () => {
+    if (!profile || visibilityUpdating) return
+    setVisibilityUpdating(true)
+    const supabase = createClient()
+    const newVal = !profile.is_visible
+    const { error } = await supabase
+      .from('salesperson_profiles')
+      .update({ is_visible: newVal })
+      .eq('id', profile.id)
+    if (!error) setProfile({ ...profile, is_visible: newVal })
+    setVisibilityUpdating(false)
+  }
 
   const handleReissueQr = async () => {
     if (!profile || qrReissuing) return
@@ -322,7 +337,23 @@ export default function SalespersonDashboard() {
             <p className="text-xs text-gray-500 mt-0.5">{profile.company_name}</p>
           </div>
           {profile.status === 'active' && (
-            <span className="text-xs bg-green-100 text-green-700 font-medium px-3 py-1 rounded-full">✓ 公開中</span>
+            <div className="flex items-center gap-2">
+              {profile.is_visible
+                ? <span className="text-xs bg-green-100 text-green-700 font-medium px-3 py-1 rounded-full">✓ 公開中</span>
+                : <span className="text-xs bg-gray-100 text-gray-500 font-medium px-3 py-1 rounded-full">一時停止中</span>
+              }
+              <button
+                onClick={handleToggleVisibility}
+                disabled={visibilityUpdating}
+                className={`text-xs px-3 py-1 rounded-full border transition font-medium ${
+                  profile.is_visible
+                    ? 'border-gray-300 text-gray-500 hover:bg-gray-100'
+                    : 'border-teal-400 text-teal-600 hover:bg-teal-50'
+                }`}
+              >
+                {visibilityUpdating ? '...' : profile.is_visible ? '一時停止' : '公開再開'}
+              </button>
+            </div>
           )}
         </div>
 
