@@ -248,7 +248,7 @@ export default function SalespersonDetail() {
               {agent.is_verified && (
                 <span
                   className="text-sm bg-blue-50 text-blue-600 font-medium px-3 py-1 rounded-full cursor-help"
-                  title="登録メールのドメインが、選択された会社の登録ドメインと一致しています。本人性・現在の在籍をERABERUが保証するものではありません。"
+                  title="登録メールのドメインが、選択された会社の登録ドメインと一致しています。本人性・現在の在籍・権限・営業品質をERABERUが保証するものではありません。"
                 >
                   ✓ 会社ドメイン一致
                 </span>
@@ -461,7 +461,7 @@ export default function SalespersonDetail() {
 
           {/* 口コミ一覧（全フェーズ統合） */}
           <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <div>
                 <p className="text-sm font-bold text-gray-700">口コミ</p>
                 <p className="text-xs text-gray-400 mt-0.5">{allAnonReviews.length}件</p>
@@ -488,6 +488,10 @@ export default function SalespersonDetail() {
                 </select>
               </div>
             </div>
+
+            <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+              口コミは投稿者の体験に基づく主観的な情報を含みます。ERABERUは口コミの正確性・完全性・最新性・担当者の対応品質を保証するものではありません。
+            </p>
 
             {(() => {
               const filtered = phaseFilter === 'all'
@@ -606,7 +610,8 @@ export default function SalespersonDetail() {
           <div className="bg-stone-50 rounded-2xl shadow-sm border border-dashed border-gray-200 p-8 relative overflow-hidden">
             <div className="absolute inset-0 bg-stone-50/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center gap-2">
               <span className="text-3xl">🔒</span>
-              <p className="text-sm font-bold text-gray-600">オファー後に開示</p>
+              <p className="text-sm font-bold text-gray-600">プロフィール開示後に閲覧できます</p>
+              <p className="text-xs text-gray-400">口コミ・詳細情報は有料開示後に表示されます</p>
             </div>
             <div className="space-y-4 opacity-30 select-none">
               <div>
@@ -681,6 +686,19 @@ export default function SalespersonDetail() {
           <div className="bg-gray-900 rounded-2xl p-6">
             <p className="text-white font-bold text-base mb-1">実名・自己紹介・詳細を見る</p>
             <p className="text-gray-400 text-xs mb-4">¥1,000 で実名・詳細プロフィール・口コミ全文が開示されます</p>
+
+            {/* 購入前注意文 */}
+            <div className="bg-gray-800 rounded-xl px-4 py-3 mb-4 space-y-1.5 text-xs text-gray-400 leading-relaxed">
+              <p>この開示により、営業担当者の詳細プロフィール・口コミ・評価等の追加情報を閲覧できます。</p>
+              <p>開示は情報閲覧のためのものであり、担当者からの返信・面談・商談成立・契約・建築結果を保証するものではありません。</p>
+              <p className="text-amber-400">決済完了後に情報が開示された場合、デジタルコンテンツの性質上、ユーザー都合による返金はできません。</p>
+              <div className="flex gap-3 pt-1">
+                <a href="/terms" className="text-gray-500 hover:text-gray-300 underline">利用規約</a>
+                <a href="/privacy" className="text-gray-500 hover:text-gray-300 underline">プライバシーポリシー</a>
+                <a href="/commercial-transactions" className="text-gray-500 hover:text-gray-300 underline">特商法表記</a>
+              </div>
+            </div>
+
             {payError && <p className="text-red-400 text-xs mb-3">{payError}</p>}
             {user ? (
               <button

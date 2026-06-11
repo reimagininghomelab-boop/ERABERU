@@ -7,6 +7,29 @@ import { QRCodeSVG } from 'qrcode.react'
 
 const ADMIN_EMAILS = ['reimagining.home.lab@gmail.com', '1989yo55@gmail.com']
 
+/*
+ * TODO: BtoBデータ出力機能を将来実装する際の制限ポリシー
+ *
+ * 禁止:
+ *   - 個別口コミ本文の原文CSV出力
+ *   - 単一 review_id に紐づくローデータ提供
+ *   - 投稿者属性と本文の直接セット提供
+ *   - 住宅会社による投稿者の特定・再識別・照合・個別接触につながる粒度の出力
+ *
+ * 集計最小値:
+ *   - 単一条件: 5件未満は非表示
+ *   - 複合条件 (地域+会社+時期+担当者+予算帯など): 10件未満は非表示
+ *
+ * 提供単位:
+ *   - 初期BtoB提供は担当者単位ではなく、会社・支店・エリア単位の傾向に留める
+ *
+ * 提供目的:
+ *   - 営業改善、教育、顧客対応品質向上、組織改善に限定
+ *   - 人事評価・懲戒・報復・個別責任追及を主目的とする利用を想定しない
+ *
+ * 実装時は review_consents テーブルの同意バージョンと目的を照合すること
+ */
+
 export default function AdminPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)

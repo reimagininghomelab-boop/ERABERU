@@ -34,6 +34,7 @@ export default function AnonymousReviewPage() {
   const [done, setDone] = useState(false)
   const [error, setError] = useState('')
   const [alreadySubmitted, setAlreadySubmitted] = useState(false)
+  const [consentAccepted, setConsentAccepted] = useState(false)
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search)
@@ -131,7 +132,7 @@ export default function AnonymousReviewPage() {
       const res = await fetch('/api/review/submit-email-verified', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, rating, content, phase, access_token: accessToken }),
+        body: JSON.stringify({ token, rating, content, phase, access_token: accessToken, consentAccepted }),
       })
       const json = await res.json()
       if (!res.ok) {
@@ -493,6 +494,32 @@ export default function AnonymousReviewPage() {
               </p>
             </div>
 
+            {/* 同意UI */}
+            <div className="bg-stone-50 border border-stone-200 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-bold text-gray-700">投稿前にご確認ください</p>
+              <ul className="text-xs text-gray-600 leading-relaxed space-y-1.5 list-disc list-inside">
+                <li>投稿内容は、営業担当者のプロフィール表示、口コミ要約、サービス改善に利用される場合があります。</li>
+                <li>投稿した文章そのものが、あなたの許可なく住宅会社に個別提供されたり、書籍・広告等に掲載されたりすることはありません。</li>
+                <li>投稿内容は、個人が特定されないよう配慮したうえで、統計化・要約化された分析データとして営業改善等に活用される場合があります。</li>
+                <li>口コミ等の情報はAIその他の自動処理技術により紹介文・要約文等の作成に利用される場合があります。</li>
+                <li>個人を特定できる情報、事実確認が困難な断定表現、誹謗中傷、虚偽の内容、実体験に基づかない投稿は掲載できません。</li>
+              </ul>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={consentAccepted}
+                  onChange={(e) => setConsentAccepted(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-orange-500 shrink-0"
+                />
+                <span className="text-xs text-gray-700 leading-relaxed">
+                  上記の内容を確認し、
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">利用規約</a>・
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">プライバシーポリシー</a>
+                  に同意して投稿します。
+                </span>
+              </label>
+            </div>
+
             {error && (
               <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3">{error}</p>
             )}
@@ -507,8 +534,8 @@ export default function AnonymousReviewPage() {
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={submitting}
-                className="flex-1 bg-orange-500 hover:bg-orange-400 disabled:bg-orange-300 text-white font-bold py-4 rounded-xl transition text-sm"
+                disabled={submitting || !consentAccepted}
+                className="flex-1 bg-orange-500 hover:bg-orange-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-4 rounded-xl transition text-sm"
               >
                 {submitting ? '送信中...' : '投稿する'}
               </button>

@@ -770,7 +770,14 @@ function SearchContent() {
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <p className="text-xs text-gray-400 truncate flex-1">{agent.company_name}</p>
                         {isStyleMatch && <span className="text-xs bg-teal-100 text-teal-600 px-1.5 py-0.5 rounded-full shrink-0 font-medium">相性◎</span>}
-                        {agent.is_verified && <span className="text-xs bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-full shrink-0">✓</span>}
+                        {agent.is_verified && (
+                          <span
+                            className="text-xs bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-full shrink-0 cursor-help"
+                            title="登録メールのドメインが、選択された会社の登録ドメインと一致しています。本人性・現在の在籍・権限・営業品質をERABERUが保証するものではありません。"
+                          >
+                            ✓ 会社ドメイン一致
+                          </span>
+                        )}
                       </div>
                       <p className="text-sm font-bold text-gray-800 truncate">{displayName}</p>
                       {agent.area_prefecture && <p className="text-xs text-gray-500">📍 {agent.area_prefecture}</p>}

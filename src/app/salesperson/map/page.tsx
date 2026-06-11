@@ -560,7 +560,7 @@ export default function StyleMapPage() {
                       {selected.isVerified && (
                         <span
                           className="text-xs bg-blue-50 text-blue-500 px-1.5 py-0.5 rounded-full cursor-help"
-                          title="登録メールのドメインが、選択された会社の登録ドメインと一致しています。本人性・現在の在籍をERABERUが保証するものではありません。"
+                          title="登録メールのドメインが、選択された会社の登録ドメインと一致しています。本人性・現在の在籍・権限・営業品質をERABERUが保証するものではありません。"
                         >
                           ✓ 会社ドメイン一致
                         </span>
