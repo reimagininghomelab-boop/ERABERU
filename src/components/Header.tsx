@@ -84,12 +84,7 @@ export default function Header({ backButton = false }: { backButton?: boolean })
               </>
             )}
             {userType === 'salesperson' && (
-              <>
-                <Link href="/salesperson/dashboard" className="text-sm text-gray-700 hover:text-teal-600 px-3 py-1.5 rounded-lg border border-stone-200 hover:border-teal-200 transition">
-                  ダッシュボード
-                </Link>
-                <button onClick={handleSignOut} className="text-xs text-gray-400 hover:text-gray-600 transition">ログアウト</button>
-              </>
+              <button onClick={handleSignOut} className="text-xs text-gray-400 hover:text-gray-600 transition">ログアウト</button>
             )}
             {userType === 'buyer' && (
               <>
@@ -127,12 +122,7 @@ export default function Header({ backButton = false }: { backButton?: boolean })
                 </>
               )}
               {userType === 'salesperson' && (
-                <>
-                  <Link href="/salesperson/dashboard" className="text-xs text-gray-600 border border-stone-200 px-2.5 py-1 rounded-lg">
-                    ダッシュボード
-                  </Link>
-                  <button onClick={handleSignOut} className="text-xs text-gray-400">ログアウト</button>
-                </>
+                <button onClick={handleSignOut} className="text-xs text-gray-400">ログアウト</button>
               )}
               {userType === 'buyer' && (
                 <>
