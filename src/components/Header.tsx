@@ -32,13 +32,9 @@ export default function Header({ backButton = false }: { backButton?: boolean })
     return () => subscription.unsubscribe()
   }, [])
 
-  const handleSignOut = async () => {
-    const supabase = createClient()
-    try {
-      await supabase.auth.signOut()
-    } finally {
-      window.location.href = '/'
-    }
+  const handleSignOut = () => {
+    createClient().auth.signOut()
+    window.location.href = '/'
   }
 
   const isLoggedIn = userType !== 'anon'
