@@ -19,6 +19,7 @@ export default function WriteReviewPage() {
   const router = useRouter()
 
   const [salesperson, setSalesperson] = useState<any>(null)
+  const [realName, setRealName] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [accessDenied, setAccessDenied] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
@@ -84,6 +85,12 @@ export default function WriteReviewPage() {
       if (ownPhaseData) {
         setSubmittedPhases(ownPhaseData.map((r: any) => r.phase))
       }
+
+      // アクセス権確認済みなので実名を取得
+      const { data: nameData } = await supabase.rpc('get_salesperson_name_for_reviewer', {
+        p_salesperson_id: salesperson_id as string,
+      })
+      if (nameData) setRealName(nameData)
     }
     load()
   }, [authLoading, accessToken, salesperson_id])
@@ -145,9 +152,8 @@ export default function WriteReviewPage() {
     return <div className="min-h-screen bg-stone-100 flex items-center justify-center text-gray-400">読み込み中...</div>
   }
 
-  const displayName = salesperson.name_initials
-    ? `${salesperson.name_initials} さん`
-    : salesperson.company_name
+  // 実名が取得できた場合は実名、なければイニシャルにフォールバック
+  const displayName = realName ?? salesperson.name_initials ?? salesperson.company_name
 
   const availablePhases = PHASES.filter((p) => !submittedPhases.includes(p.value))
 
@@ -169,7 +175,7 @@ export default function WriteReviewPage() {
             href={`/salesperson/${salesperson_id}`}
             className="block bg-orange-500 hover:bg-orange-400 text-white font-bold py-3 px-8 rounded-xl transition text-sm"
           >
-            {displayName}さんのページへ戻る
+            {displayName} さんのページへ戻る
           </Link>
         </div>
       </main>
