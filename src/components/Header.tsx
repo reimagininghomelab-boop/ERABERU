@@ -72,7 +72,7 @@ export default function Header({ backButton = false }: { backButton?: boolean })
 
           <div className="flex items-center gap-3">
             {!isLoggedIn && (
-              <Link href="/salesperson/register" className="text-xs text-gray-400 hover:text-gray-600 transition hidden lg:block">
+              <Link href="/for-salespeople" className="text-xs text-gray-400 hover:text-gray-600 transition hidden lg:block">
                 営業マンとして登録
               </Link>
             )}
