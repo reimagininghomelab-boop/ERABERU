@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 
 const ADMIN_EMAILS = ['reimagining.home.lab@gmail.com', '1989yo55@gmail.com']
@@ -11,6 +11,7 @@ type UserType = 'anon' | 'buyer' | 'salesperson' | 'admin'
 export default function Header({ backButton = false }: { backButton?: boolean }) {
   const [userType, setUserType] = useState<UserType>('anon')
   const router = useRouter()
+  const pathname = usePathname()
 
   useEffect(() => {
     const supabase = createClient()
@@ -72,9 +73,15 @@ export default function Header({ backButton = false }: { backButton?: boolean })
 
           <div className="flex items-center gap-3">
             {!isLoggedIn && (
-              <Link href="/for-salespeople" className="text-xs text-gray-400 hover:text-gray-600 transition hidden lg:block">
-                営業マンとして登録
-              </Link>
+              pathname === '/for-salespeople' ? (
+                <Link href="/" className="text-xs text-gray-400 hover:text-gray-600 transition hidden lg:block">
+                  TOPへ戻る
+                </Link>
+              ) : (
+                <Link href="/for-salespeople" className="text-xs text-gray-400 hover:text-gray-600 transition hidden lg:block">
+                  営業マンとして登録
+                </Link>
+              )
             )}
 
             {userType === 'admin' && (
