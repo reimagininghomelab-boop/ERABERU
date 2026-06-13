@@ -12,7 +12,7 @@ const FOOTER_SECTIONS = [
   {
     title: 'ご利用案内',
     links: [
-      { label: '営業担当者の方へ', href: '/salesperson/register' },
+      { label: '営業担当者の方へ', href: '/for-salespeople' },
     ],
   },
   {
