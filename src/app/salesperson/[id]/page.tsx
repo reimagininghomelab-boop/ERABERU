@@ -109,6 +109,10 @@ export default function SalespersonDetail() {
           .select('real_name, family_name, given_name, bio, contract_count')
           .eq('id', id)
           .single()
+        if (!full && searchParams.get('autoUnlock') === '1') {
+          setShowConfirmModal(true)
+        }
+
         if (full) {
           setUnlockedData(full)
           await fetchReviews(supabase, user.id)
@@ -162,7 +166,7 @@ export default function SalespersonDetail() {
 
   const handleUnlockClick = () => {
     if (!user) {
-      router.push(`/auth/login?redirect=/salesperson/${id}`)
+      router.push(`/auth/login?redirect=${encodeURIComponent(`/salesperson/${id}?autoUnlock=1`)}`)
       return
     }
     setShowConfirmModal(true)
@@ -238,25 +242,27 @@ export default function SalespersonDetail() {
 
       {/* 開示確認モーダル */}
       {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 overflow-y-auto py-8">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5 my-auto">
             <div>
-              <p className="text-lg font-bold text-gray-800">詳細情報を開示します</p>
-              <p className="text-sm text-orange-500 font-semibold mt-1">開示料金：1,000円（税込）</p>
+              <p className="text-lg font-bold text-gray-800">この営業担当者への相談を開始します</p>
+              <p className="text-sm text-orange-500 font-semibold mt-1">利用料金：1,000円（税込）</p>
             </div>
 
-            <div className="bg-stone-50 rounded-xl p-4 space-y-1.5">
-              <p className="text-xs font-medium text-gray-500 mb-2">開示内容</p>
-              <ul className="space-y-1 text-sm text-gray-700">
-                <li className="flex items-start gap-2"><span className="text-orange-400 mt-0.5">✓</span>登録されている氏名</li>
-                <li className="flex items-start gap-2"><span className="text-orange-400 mt-0.5">✓</span>詳細プロフィール・自己紹介</li>
-                <li className="flex items-start gap-2"><span className="text-orange-400 mt-0.5">✓</span>公開されている口コミ・評価</li>
+            <div className="bg-stone-50 rounded-xl p-4">
+              <p className="text-xs font-medium text-gray-500 mb-2">利用開始後にできること</p>
+              <ul className="space-y-1.5 text-sm text-gray-700">
+                <li className="flex items-start gap-2"><span className="text-orange-400 mt-0.5">✓</span>登録されている氏名の確認</li>
+                <li className="flex items-start gap-2"><span className="text-orange-400 mt-0.5">✓</span>詳細プロフィール・自己紹介の閲覧</li>
+                <li className="flex items-start gap-2"><span className="text-orange-400 mt-0.5">✓</span>公開中の口コミ全文の閲覧</li>
+                <li className="flex items-start gap-2"><span className="text-orange-400 mt-0.5">✓</span>この営業担当者への相談リクエスト送信</li>
               </ul>
+              <p className="text-xs text-gray-400 mt-3">利用開始後も、相談リクエストを送るかどうかは自由に判断できます。</p>
             </div>
 
             <div className="space-y-2 text-xs text-gray-500 leading-relaxed">
-              <p>ERABERUは、担当者選びのための情報を提供するサービスです。相談への返信、面談や商談の成立、契約、建築結果などを保証するものではありません。</p>
-              <p className="text-amber-600">デジタルコンテンツの性質上、情報の開示後は、お客様都合による返金をお受けできません。</p>
+              <p>ERABERUは、担当者選びと相談開始のための情報・機能を提供するサービスです。相談への返信、面談や商談の成立、契約、建築結果などを保証するものではありません。</p>
+              <p className="text-amber-600">デジタルコンテンツおよび相談機能の利用開始後は、お客様都合による返金をお受けできません。</p>
               <div className="flex gap-3 pt-1">
                 <a href="/terms" className="text-gray-400 hover:text-gray-600 underline">利用規約</a>
                 <a href="/privacy" className="text-gray-400 hover:text-gray-600 underline">プライバシーポリシー</a>
@@ -272,7 +278,7 @@ export default function SalespersonDetail() {
                 disabled={paying}
                 className="w-full bg-orange-500 hover:bg-orange-400 disabled:bg-orange-300 text-white font-bold py-4 rounded-xl transition text-base"
               >
-                {paying ? '決済ページへ移動中...' : '1,000円で開示する'}
+                {paying ? '決済ページへ移動中...' : '1,000円で利用を開始する'}
               </button>
               <button
                 onClick={() => setShowConfirmModal(false)}
@@ -719,17 +725,18 @@ export default function SalespersonDetail() {
         {/* 詳細開示CTA（未開示の場合のみ） */}
         {!unlockedData && (
           <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
-            <p className="text-gray-800 font-bold text-base mb-1">氏名・自己紹介・口コミを見る</p>
-            <p className="text-gray-500 text-sm mb-5">1,000円で、登録されている氏名・詳細プロフィール・口コミ全文を確認できます。</p>
+            <p className="text-gray-800 font-bold text-base mb-1">この営業担当者への相談を始める</p>
+            <p className="text-gray-500 text-sm mb-1">氏名・詳細プロフィール・公開中の口コミを確認し、この営業担当者へ相談リクエストを送れるようになります。</p>
+            <p className="text-gray-400 text-xs mb-5">利用開始後も、相談を送るかどうかは自由に判断できます。</p>
 
             {payError && <p className="text-red-500 text-xs mb-3">{payError}</p>}
             <button
               onClick={handleUnlockClick}
               className="w-full bg-orange-500 hover:bg-orange-400 text-white font-bold py-4 rounded-xl transition text-base"
             >
-              この営業担当者の詳細を見る
+              相談を開始する
             </button>
-            <p className="text-center text-xs text-gray-400 mt-2">開示料金 1,000円（税込）</p>
+            <p className="text-center text-xs text-gray-400 mt-2">利用料金 1,000円（税込）</p>
           </div>
         )}
 
