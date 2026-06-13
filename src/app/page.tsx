@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
+import Footer from '@/components/Footer'
 
 // ─── 相性診断データ ────────────────────────────────────────────────
 const QUIZ = [
@@ -280,6 +281,8 @@ export default function TopPage() {
           営業を探してみる →
         </Link>
       </section>
+
+      <Footer />
     </main>
   )
 }
