@@ -951,7 +951,10 @@ function SearchContent() {
       {showLoginGate && <LoginGateModal onClose={() => setShowLoginGate(false)} />}
       {showAiModal && (
         <AiSearchModal
-          onClose={() => setShowAiModal(false)}
+          onClose={() => {
+            setShowAiModal(false)
+            if (aiParam === '1') router.replace('/search', { scroll: false })
+          }}
           onSearchComplete={handleAiSearchComplete}
           agents={agents}
         />
