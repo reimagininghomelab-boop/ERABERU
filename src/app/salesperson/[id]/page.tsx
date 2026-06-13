@@ -43,6 +43,7 @@ export default function SalespersonDetail() {
   const [offerSending, setOfferSending] = useState(false)
   const [offerDone, setOfferDone] = useState(false)
   const [offerError, setOfferError] = useState('')
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
 
   const PHASE_META: Record<string, { label: string; bg: string; border: string; text: string }> = {
     pre_contract:   { label: '契約前', bg: 'bg-teal-50',   border: 'border-teal-200',   text: 'text-teal-700' },
@@ -159,6 +160,14 @@ export default function SalespersonDetail() {
     setFavoriteLoading(false)
   }
 
+  const handleUnlockClick = () => {
+    if (!user) {
+      router.push(`/auth/login?redirect=/salesperson/${id}`)
+      return
+    }
+    setShowConfirmModal(true)
+  }
+
   const handleOffer = async () => {
     if (!user) return
     setPaying(true)
@@ -226,6 +235,55 @@ export default function SalespersonDetail() {
   return (
     <main className="min-h-screen bg-stone-100">
       <Header backButton />
+
+      {/* 開示確認モーダル */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+            <div>
+              <p className="text-lg font-bold text-gray-800">詳細情報を開示します</p>
+              <p className="text-sm text-orange-500 font-semibold mt-1">開示料金：1,000円（税込）</p>
+            </div>
+
+            <div className="bg-stone-50 rounded-xl p-4 space-y-1.5">
+              <p className="text-xs font-medium text-gray-500 mb-2">開示内容</p>
+              <ul className="space-y-1 text-sm text-gray-700">
+                <li className="flex items-start gap-2"><span className="text-orange-400 mt-0.5">✓</span>登録されている氏名</li>
+                <li className="flex items-start gap-2"><span className="text-orange-400 mt-0.5">✓</span>詳細プロフィール・自己紹介</li>
+                <li className="flex items-start gap-2"><span className="text-orange-400 mt-0.5">✓</span>公開されている口コミ・評価</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2 text-xs text-gray-500 leading-relaxed">
+              <p>ERABERUは、担当者選びのための情報を提供するサービスです。相談への返信、面談や商談の成立、契約、建築結果などを保証するものではありません。</p>
+              <p className="text-amber-600">デジタルコンテンツの性質上、情報の開示後は、お客様都合による返金をお受けできません。</p>
+              <div className="flex gap-3 pt-1">
+                <a href="/terms" className="text-gray-400 hover:text-gray-600 underline">利用規約</a>
+                <a href="/privacy" className="text-gray-400 hover:text-gray-600 underline">プライバシーポリシー</a>
+                <a href="/commercial-transactions" className="text-gray-400 hover:text-gray-600 underline">特定商取引法に基づく表記</a>
+              </div>
+            </div>
+
+            {payError && <p className="text-red-500 text-xs">{payError}</p>}
+
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                onClick={handleOffer}
+                disabled={paying}
+                className="w-full bg-orange-500 hover:bg-orange-400 disabled:bg-orange-300 text-white font-bold py-4 rounded-xl transition text-base"
+              >
+                {paying ? '決済ページへ移動中...' : '1,000円で開示する'}
+              </button>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                className="w-full text-gray-500 hover:text-gray-700 py-2 text-sm transition"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isPreview && (
         <div className="bg-orange-500 px-6 py-3 flex items-center justify-between">
@@ -393,7 +451,7 @@ export default function SalespersonDetail() {
             </div>
             <div className="space-y-5">
               <div>
-                <p className="text-xs text-gray-400 mb-1">実名</p>
+                <p className="text-xs text-gray-400 mb-1">氏名</p>
                 <p className="text-gray-800 font-semibold">
                   {unlockedData.family_name && unlockedData.given_name
                     ? `${unlockedData.family_name} ${unlockedData.given_name}`
@@ -409,7 +467,7 @@ export default function SalespersonDetail() {
                       <p className="text-xs font-bold text-purple-600">AIによる紹介文</p>
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-gray-400 mb-1">この営業マンの雰囲気</p>
+                      <p className="text-xs font-medium text-gray-400 mb-1">この担当者の雰囲気</p>
                       <p className="text-gray-700 leading-relaxed">{ai.summary}</p>
                     </div>
                     {ai.goodMatch?.length > 0 && (
@@ -598,7 +656,7 @@ export default function SalespersonDetail() {
             {/* 口コミ投稿案内 */}
             <div className="mt-5 pt-5 border-t border-stone-100">
               <p className="text-xs text-gray-400 leading-relaxed">
-                この営業マンとすでに家づくりを進めている方は、専用QRまたは
+                この担当者とすでに家づくりを進めている方は、専用QRまたは
                 <Link href="/mypage" className="text-orange-500 hover:underline mx-0.5">マイページ</Link>
                 から口コミを投稿できます。
               </p>
@@ -615,7 +673,7 @@ export default function SalespersonDetail() {
             </div>
             <div className="space-y-4 opacity-30 select-none">
               <div>
-                <p className="text-xs text-gray-400 mb-1">実名</p>
+                <p className="text-xs text-gray-400 mb-1">氏名</p>
                 <p className="text-gray-800 font-semibold">██ ██</p>
               </div>
               <div>
@@ -683,62 +741,32 @@ export default function SalespersonDetail() {
 
         {/* 詳細開示CTA（未開示の場合のみ） */}
         {!unlockedData && (
-          <div className="bg-gray-900 rounded-2xl p-6">
-            <p className="text-white font-bold text-base mb-1">実名・自己紹介・詳細を見る</p>
-            <p className="text-gray-400 text-xs mb-4">¥1,000 で実名・詳細プロフィール・口コミ全文が開示されます</p>
+          <div className="bg-white rounded-2xl shadow-sm border border-stone-200 p-6">
+            <p className="text-gray-800 font-bold text-base mb-1">氏名・自己紹介・口コミを見る</p>
+            <p className="text-gray-500 text-sm mb-5">1,000円で、登録されている氏名・詳細プロフィール・口コミ全文を確認できます。</p>
 
-            {/* 購入前注意文 */}
-            <div className="bg-gray-800 rounded-xl px-4 py-3 mb-4 space-y-1.5 text-xs text-gray-400 leading-relaxed">
-              <p>この開示により、営業担当者の詳細プロフィール・口コミ・評価等の追加情報を閲覧できます。</p>
-              <p>開示は情報閲覧のためのものであり、担当者からの返信・面談・商談成立・契約・建築結果を保証するものではありません。</p>
-              <p className="text-amber-400">決済完了後に情報が開示された場合、デジタルコンテンツの性質上、ユーザー都合による返金はできません。</p>
-              <div className="flex gap-3 pt-1">
-                <a href="/terms" className="text-gray-500 hover:text-gray-300 underline">利用規約</a>
-                <a href="/privacy" className="text-gray-500 hover:text-gray-300 underline">プライバシーポリシー</a>
-                <a href="/commercial-transactions" className="text-gray-500 hover:text-gray-300 underline">特商法表記</a>
-              </div>
-            </div>
-
-            {payError && <p className="text-red-400 text-xs mb-3">{payError}</p>}
-            {user ? (
-              <button
-                onClick={handleOffer}
-                disabled={paying}
-                className="w-full bg-orange-500 hover:bg-orange-400 disabled:bg-orange-300 text-white font-bold py-4 rounded-xl transition text-base"
-              >
-                {paying ? '決済ページへ移動中...' : '¥1,000 で詳細を開示する'}
-              </button>
-            ) : (
-              <button
-                onClick={() => router.push('/auth/login')}
-                className="w-full bg-stone-600 hover:bg-stone-500 text-white font-bold py-4 rounded-xl transition text-base"
-              >
-                ログインして開示する
-              </button>
-            )}
+            {payError && <p className="text-red-500 text-xs mb-3">{payError}</p>}
+            <button
+              onClick={handleUnlockClick}
+              className="w-full bg-orange-500 hover:bg-orange-400 text-white font-bold py-4 rounded-xl transition text-base"
+            >
+              この営業担当者の詳細を見る
+            </button>
+            <p className="text-center text-xs text-gray-400 mt-2">開示料金 1,000円（税込）</p>
           </div>
         )}
 
-        {/* オファー（相談）フォーム */}
+        {/* オファー（相談）フォーム：開示後のみ表示 */}
+        {unlockedData && (
         <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
-          <p className="text-sm font-bold text-gray-800 mb-1">この営業マンに相談したい</p>
-          <p className="text-xs text-gray-500 mb-4">検討エリア・時期・相談内容を送ると、営業マン側に届きます。</p>
+          <p className="text-sm font-bold text-gray-800 mb-1">この営業担当者に相談する</p>
+          <p className="text-xs text-gray-500 mb-4">検討エリア・時期・相談内容を送ると、担当者側に届きます。</p>
 
-          {!user ? (
-            <div className="text-center py-4">
-              <p className="text-sm text-gray-500 mb-3">相談リクエストの送信にはログインが必要です</p>
-              <button
-                onClick={() => router.push('/auth/login')}
-                className="bg-teal-500 hover:bg-teal-400 text-white font-bold px-6 py-3 rounded-xl text-sm transition"
-              >
-                ログインして相談する
-              </button>
-            </div>
-          ) : offerDone ? (
+          {offerDone ? (
             <div className="text-center py-6 space-y-2">
               <span className="text-3xl">✅</span>
               <p className="text-sm font-bold text-gray-700">相談リクエストを送信しました</p>
-              <p className="text-xs text-gray-400">営業マン側で内容を確認し、ご連絡差し上げます。</p>
+              <p className="text-xs text-gray-400">担当者側で内容を確認し、ご連絡差し上げます。</p>
             </div>
           ) : !showOfferForm ? (
             <button
@@ -799,7 +827,7 @@ export default function SalespersonDetail() {
                   placeholder="example@mail.com"
                   className="w-full text-sm text-gray-800 bg-white border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 placeholder:text-gray-400"
                 />
-                <p className="text-xs text-gray-400 mt-1">営業マンへの連絡先として使用します。電話番号は不要です。</p>
+                <p className="text-xs text-gray-400 mt-1">担当者への連絡先として使用します。電話番号は不要です。</p>
               </div>
               {offerError && <p className="text-sm text-red-500">{offerError}</p>}
               <div className="flex gap-3">
@@ -821,6 +849,7 @@ export default function SalespersonDetail() {
             </div>
           )}
         </div>
+        )}
 
       </div>
     </main>
