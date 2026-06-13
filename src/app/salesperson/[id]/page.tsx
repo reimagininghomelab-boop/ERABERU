@@ -296,13 +296,30 @@ export default function SalespersonDetail() {
 
         {/* プロフィールカード */}
         <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-8">
-          <div className="flex items-start justify-between mb-6">
-            <div className="w-20 h-20 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center text-4xl shrink-0">
-              {unlockedData && agent.profile_image_url
-                ? <img src={agent.profile_image_url} alt="" className="w-full h-full object-cover" />
-                : '👤'}
+
+          {/* アバター・名前・会社 */}
+          <div className="flex items-start justify-between mb-5">
+            <div className="flex items-start gap-4">
+              <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center text-3xl shrink-0">
+                {unlockedData && agent.profile_image_url
+                  ? <img src={agent.profile_image_url} alt="" className="w-full h-full object-cover" />
+                  : '👤'}
+              </div>
+              <div>
+                {unlockedData && (
+                  <p className="text-lg font-bold text-gray-800 leading-tight">
+                    {unlockedData.family_name && unlockedData.given_name
+                      ? `${unlockedData.family_name} ${unlockedData.given_name}`
+                      : unlockedData.real_name}
+                  </p>
+                )}
+                <p className={`font-semibold ${unlockedData ? 'text-sm text-gray-500 mt-0.5' : 'text-gray-800 text-base'}`}>{agent.company_name}</p>
+                {agent.department && (
+                  <p className="text-xs text-gray-400 mt-0.5">{agent.department}</p>
+                )}
+              </div>
             </div>
-            <div className="flex flex-col items-end gap-2">
+            <div className="flex flex-col items-end gap-2 shrink-0">
               {agent.is_verified && (
                 <span
                   className="text-sm bg-blue-50 text-blue-600 font-medium px-3 py-1 rounded-full cursor-help"
@@ -328,14 +345,75 @@ export default function SalespersonDetail() {
             </div>
           </div>
 
-          <div className="space-y-5">
-            <div>
-              <p className="text-xs text-gray-400 mb-1">会社名</p>
-              <p className="text-gray-800 font-semibold">{agent.company_name}</p>
-              {agent.department && (
-                <p className="text-xs text-gray-500 mt-0.5">{agent.department}</p>
+          {/* 星評価・口コミ件数（優先表示） */}
+          {reviewStats && reviewStats.total > 0 && (
+            <div className="mb-5">
+              {reviewStats.avg_rating !== null ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-amber-400 text-base">{'★'.repeat(Math.round(reviewStats.avg_rating))}{'☆'.repeat(5 - Math.round(reviewStats.avg_rating))}</span>
+                  <span className="text-sm font-semibold text-gray-700">{reviewStats.avg_rating} / 5.0</span>
+                  <span className="text-xs text-gray-400">口コミ {reviewStats.visible}件</span>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">口コミ {reviewStats.visible}件</p>
               )}
             </div>
+          )}
+
+          {/* AIによる紹介文 */}
+          {agent.ai_summary ? (() => {
+            const ai = agent.ai_summary as { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[] }
+            return (
+              <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 space-y-3 text-sm mb-5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-purple-500">✨</span>
+                  <p className="text-xs font-bold text-purple-600">AIによる紹介文</p>
+                </div>
+                <p className="text-gray-700 leading-relaxed">{ai.summary}</p>
+                {ai.goodMatch?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 mb-1.5">相性がよさそうな方</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ai.goodMatch.map((m, i) => (
+                        <span key={i} className="text-xs bg-white text-purple-600 border border-purple-200 px-2.5 py-1 rounded-full">{m}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {ai.communicationStyle && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 mb-1">会話スタイル</p>
+                    <p className="text-gray-600 leading-relaxed">{ai.communicationStyle}</p>
+                  </div>
+                )}
+                {ai.strengths?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 mb-1.5">得意なサポート</p>
+                    <ul className="space-y-1">
+                      {ai.strengths.map((s, i) => (
+                        <li key={i} className="text-gray-600 flex items-start gap-1.5"><span className="text-purple-400 mt-0.5">・</span>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className="text-xs text-gray-300 pt-1">※ プロフィール情報をもとにAIが生成した紹介文です</p>
+              </div>
+            )
+          })() : (
+            <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 mb-5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-purple-500">✨</span>
+                <p className="text-xs font-bold text-purple-600">AIによる紹介文</p>
+                <span className="text-xs bg-purple-100 text-purple-400 px-2 py-0.5 rounded-full ml-auto">準備中</span>
+              </div>
+              <p className="text-sm text-gray-400 leading-relaxed mt-2">
+                口コミ・自己紹介・実績をもとにAIが生成した紹介文がここに表示されます。
+              </p>
+            </div>
+          )}
+
+          {/* 補足情報 */}
+          <div className="space-y-4">
             {(agent.core_city || (agent.available_prefectures ?? []).length > 0) && (
               <div>
                 <p className="text-xs text-gray-400 mb-1">活動エリア</p>
@@ -387,7 +465,7 @@ export default function SalespersonDetail() {
               if (!hasStyles) return null
               return (
                 <div>
-                  <p className="text-xs text-gray-400 mb-3">会話スタイル</p>
+                  <p className="text-xs text-gray-400 mb-3">会話スタイル（本人評価）</p>
                   <div className="space-y-3">
                     {SALES_STYLE_AXES.map(({ key, left, right }) => {
                       const val = styles[key] ?? 3
@@ -412,29 +490,18 @@ export default function SalespersonDetail() {
                 </div>
               )
             })()}
-
-            {/* 口コミ統計（開示前でも表示） */}
             {reviewStats && reviewStats.total > 0 && (
-              <div className="pt-3 border-t border-stone-100 space-y-2">
-                {reviewStats.avg_rating !== null && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-amber-400 text-lg">{'★'.repeat(Math.round(reviewStats.avg_rating))}{'☆'.repeat(5 - Math.round(reviewStats.avg_rating))}</span>
-                    <span className="text-sm font-semibold text-gray-700">{reviewStats.avg_rating}</span>
-                    <span className="text-xs text-gray-400">（{reviewStats.visible}件）</span>
+              <div>
+                <p className="text-xs text-gray-400 mb-1">口コミ公開率</p>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-stone-200 rounded-full h-2">
+                    <div
+                      className="bg-green-400 h-2 rounded-full transition-all"
+                      style={{ width: `${reviewStats.rate ?? 0}%` }}
+                    />
                   </div>
-                )}
-                <div>
-                  <p className="text-xs text-gray-400 mb-1">口コミ公開率</p>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 bg-stone-200 rounded-full h-2">
-                      <div
-                        className="bg-green-400 h-2 rounded-full transition-all"
-                        style={{ width: `${reviewStats.rate ?? 0}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-semibold text-gray-700">{reviewStats.rate ?? 0}%</span>
-                    <span className="text-xs text-gray-400">（{reviewStats.visible}/{reviewStats.total}件）</span>
-                  </div>
+                  <span className="text-sm font-semibold text-gray-700">{reviewStats.rate ?? 0}%</span>
+                  <span className="text-xs text-gray-400">（{reviewStats.visible}/{reviewStats.total}件）</span>
                 </div>
               </div>
             )}
@@ -458,48 +525,6 @@ export default function SalespersonDetail() {
                     : unlockedData.real_name}
                 </p>
               </div>
-              {agent.ai_summary && (() => {
-                const ai = agent.ai_summary as { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[] }
-                return (
-                  <div className="bg-purple-50 border border-purple-100 rounded-xl p-4 space-y-3 text-sm">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="text-purple-500">✨</span>
-                      <p className="text-xs font-bold text-purple-600">AIによる紹介文</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-400 mb-1">この担当者の雰囲気</p>
-                      <p className="text-gray-700 leading-relaxed">{ai.summary}</p>
-                    </div>
-                    {ai.goodMatch?.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-gray-400 mb-1.5">相性がよさそうな方</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {ai.goodMatch.map((m, i) => (
-                            <span key={i} className="text-xs bg-white text-purple-600 border border-purple-200 px-2.5 py-1 rounded-full">{m}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {ai.communicationStyle && (
-                      <div>
-                        <p className="text-xs font-medium text-gray-400 mb-1">会話スタイル</p>
-                        <p className="text-gray-600 leading-relaxed">{ai.communicationStyle}</p>
-                      </div>
-                    )}
-                    {ai.strengths?.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-gray-400 mb-1.5">得意なサポート</p>
-                        <ul className="space-y-1">
-                          {ai.strengths.map((s, i) => (
-                            <li key={i} className="text-gray-600 flex items-start gap-1.5"><span className="text-purple-400 mt-0.5">・</span>{s}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    <p className="text-xs text-gray-300 pt-1">※ プロフィール情報をもとにAIが生成した紹介文です</p>
-                  </div>
-                )
-              })()}
               {unlockedData.bio && (
                 <div>
                   <p className="text-xs text-gray-400 mb-1">自己紹介</p>
@@ -688,54 +713,6 @@ export default function SalespersonDetail() {
             </div>
           </div>
 
-          <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-purple-500">✨</span>
-              <p className="text-sm font-bold text-purple-600">AIによる紹介文</p>
-              {!agent.ai_summary && (
-                <span className="text-xs bg-purple-100 text-purple-400 px-2 py-0.5 rounded-full ml-auto">準備中</span>
-              )}
-            </div>
-            {agent.ai_summary ? (() => {
-              const ai = agent.ai_summary as { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[] }
-              return (
-                <div className="space-y-4 text-sm">
-                  <p className="text-gray-700 leading-relaxed">{ai.summary}</p>
-                  {ai.goodMatch?.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-400 mb-1.5">相性がよさそうな方</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {ai.goodMatch.map((m, i) => (
-                          <span key={i} className="text-xs bg-purple-50 text-purple-600 border border-purple-100 px-2.5 py-1 rounded-full">{m}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {ai.communicationStyle && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-400 mb-1">会話スタイル</p>
-                      <p className="text-gray-600 leading-relaxed">{ai.communicationStyle}</p>
-                    </div>
-                  )}
-                  {ai.strengths?.length > 0 && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-400 mb-1.5">得意なサポート</p>
-                      <ul className="space-y-1">
-                        {ai.strengths.map((s, i) => (
-                          <li key={i} className="text-gray-600 flex items-start gap-1.5"><span className="text-purple-400 mt-0.5">・</span>{s}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-300 pt-1">※ プロフィール情報をもとにAIが生成した紹介文です</p>
-                </div>
-              )
-            })() : (
-              <p className="text-sm text-gray-400 leading-relaxed">
-                口コミ・自己紹介・実績をもとにAIが生成した紹介文がここに表示されます。
-              </p>
-            )}
-          </div>
           </>
         )}
 
