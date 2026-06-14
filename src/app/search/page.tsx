@@ -471,48 +471,53 @@ function SearchContent() {
   useEffect(() => {
     const supabase = createClient()
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        setIsLoggedIn(true)
-        const { data: ownProfile } = await supabase
-          .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
-        if (ownProfile) { router.replace('/salesperson/dashboard'); return }
-      }
-      const { data: publicData } = await supabase.from('safe_salesperson_profiles').select('*')
-      if (publicData) {
-        setAgents(publicData)
-        if (publicData.length > 0) {
-          const firstId = publicData[0].id
-          setSelectedId(firstId)
-          setDetailVisible(true)
-          fetchReviewsForAgent(firstId)
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          setIsLoggedIn(true)
+          const { data: ownProfile } = await supabase
+            .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
+          if (ownProfile) { router.replace('/salesperson/dashboard'); return }
         }
-      }
-      if (user) {
-        const [
-          { data: unlocked },
-          { data: myReviews },
-          { data: myOffers },
-        ] = await Promise.all([
-          supabase.from('salesperson_profiles').select('id, real_name, family_name, given_name'),
-          supabase.from('anonymous_reviews').select('salesperson_id').eq('user_id', user.id).neq('status', 'superseded'),
-          supabase.from('offers').select('salesperson_id').eq('buyer_id', user.id),
-        ])
-        if (unlocked) {
-          const map: Record<string, any> = {}
-          unlocked.forEach((u) => { map[u.id] = u })
-          setUnlockedMap(map)
+        const { data: publicData } = await supabase.from('safe_salesperson_profiles').select('*')
+        if (publicData) {
+          setAgents(publicData)
+          if (publicData.length > 0) {
+            const firstId = publicData[0].id
+            setSelectedId(firstId)
+            setDetailVisible(true)
+            fetchReviewsForAgent(firstId)
+          }
         }
-        // 接点済み営業の集計
-        const reviewedIds = new Set((myReviews ?? []).map((r: any) => r.salesperson_id as string))
-        const offeredIds = new Set((myOffers ?? []).map((o: any) => o.salesperson_id as string))
-        const contacted = new Set([...reviewedIds, ...offeredIds])
-        setContactedIds(contacted)
-        // オファー済みで口コミ未投稿数
-        const pendingCount = [...offeredIds].filter((id) => !reviewedIds.has(id)).length
-        setPendingReviewCount(pendingCount)
+        if (user) {
+          const [
+            { data: unlocked },
+            { data: myReviews },
+            { data: myOffers },
+          ] = await Promise.all([
+            supabase.from('salesperson_profiles').select('id, real_name, family_name, given_name'),
+            supabase.from('anonymous_reviews').select('salesperson_id').eq('user_id', user.id).neq('status', 'superseded'),
+            supabase.from('offers').select('salesperson_id').eq('buyer_id', user.id),
+          ])
+          if (unlocked) {
+            const map: Record<string, any> = {}
+            unlocked.forEach((u) => { map[u.id] = u })
+            setUnlockedMap(map)
+          }
+          // 接点済み営業の集計
+          const reviewedIds = new Set((myReviews ?? []).map((r: any) => r.salesperson_id as string))
+          const offeredIds = new Set((myOffers ?? []).map((o: any) => o.salesperson_id as string))
+          const contacted = new Set([...reviewedIds, ...offeredIds])
+          setContactedIds(contacted)
+          // オファー済みで口コミ未投稿数
+          const pendingCount = [...offeredIds].filter((id) => !reviewedIds.has(id)).length
+          setPendingReviewCount(pendingCount)
+        }
+      } catch {
+        // エラーでもローディングを解除してページを表示する
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
     load()
   }, [])
@@ -608,7 +613,26 @@ function SearchContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactedIds, isLoggedIn])
 
-  if (loading) return <div className="min-h-screen bg-stone-50" />
+  if (loading) return (
+    <div className="min-h-screen bg-stone-50">
+      <Header />
+      <div className="max-w-6xl mx-auto px-4 md:px-6 py-4">
+        <div className="h-7 w-40 bg-stone-200 rounded-lg animate-pulse mb-6" />
+        <div className="space-y-3">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white rounded-2xl border border-stone-200 p-4 flex gap-3 animate-pulse">
+              <div className="w-12 h-12 rounded-full bg-stone-200 shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3 w-24 bg-stone-200 rounded" />
+                <div className="h-4 w-36 bg-stone-200 rounded" />
+                <div className="h-3 w-20 bg-stone-200 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 
   const selectedAgent = selectedId ? (agents.find((a) => a.id === selectedId) ?? null) : null
   const stickyDisplayName = selectedAgent
