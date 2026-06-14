@@ -43,49 +43,60 @@ function LoginContent() {
     setMessage('')
     setLoading(true)
 
-    const supabase = createClient()
+    try {
+      const supabase = createClient()
 
-    if (mode === 'login') {
-      const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) {
-        setError(error.message)
-      } else if (!fromQr) {
-        // セッション確立後にアカウント種別を判定して直接リダイレクト（race condition 回避）
-        const user = signInData.user
-        const redirectParam = searchParams.get('redirect')
-        if (redirectParam) {
-          window.location.href = redirectParam
-        } else if (user) {
-          const { data: sp } = await supabase
-            .from('salesperson_profiles')
-            .select('id')
-            .eq('user_id', user.id)
-            .maybeSingle()
-          window.location.href = sp ? '/salesperson/dashboard' : '/'
+      if (mode === 'login') {
+        const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error) {
+          if (error.message.includes('password') && (error.message.includes('breach') || error.message.includes('leaked'))) {
+            setError('このパスワードは過去のデータ漏洩で流出したものです。別のパスワードに変更してください。')
+          } else {
+            setError(error.message)
+          }
+        } else if (!fromQr) {
+          // セッション確立後にアカウント種別を判定して直接リダイレクト（race condition 回避）
+          const user = signInData.user
+          const redirectParam = searchParams.get('redirect')
+          if (redirectParam) {
+            window.location.href = redirectParam
+            return
+          } else if (user) {
+            const { data: sp } = await supabase
+              .from('salesperson_profiles')
+              .select('id')
+              .eq('user_id', user.id)
+              .maybeSingle()
+            window.location.href = sp ? '/salesperson/dashboard' : '/'
+            return
+          } else {
+            window.location.href = '/'
+            return
+          }
+        }
+        // fromQr の場合は onAuthStateChange が SIGNED_IN を拾って qrLinked = true にする
+      } else if (mode === 'signup') {
+        const { error } = await supabase.auth.signUp({ email, password })
+        if (error) {
+          setError(error.message)
         } else {
-          window.location.href = '/'
+          setMessage('登録完了です。ログインモードに切り替えてログインしてください。')
+        }
+      } else {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth/reset`,
+        })
+        if (error) {
+          setError(error.message)
+        } else {
+          setMessage('パスワードリセット用のメールを送信しました。')
         }
       }
-      // fromQr の場合は onAuthStateChange が SIGNED_IN を拾って qrLinked = true にする
-    } else if (mode === 'signup') {
-      const { error } = await supabase.auth.signUp({ email, password })
-      if (error) {
-        setError(error.message)
-      } else {
-        setMessage('登録完了です。ログインモードに切り替えてログインしてください。')
-      }
-    } else {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset`,
-      })
-      if (error) {
-        setError(error.message)
-      } else {
-        setMessage('パスワードリセット用のメールを送信しました。')
-      }
+    } catch {
+      setError('エラーが発生しました。もう一度お試しください。')
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }
 
   // QR経由でログイン成功後: 紐づけ完了 → 本サイトリンクを表示
