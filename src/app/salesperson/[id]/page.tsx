@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
@@ -14,7 +14,7 @@ const SALES_STYLE_AXES = [
 ]
 const SUPABASE_FUNCTIONS_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
 
-export default function SalespersonDetail() {
+function SalespersonDetailContent() {
   const { id } = useParams()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -78,77 +78,78 @@ export default function SalespersonDetail() {
     const supabase = createClient()
 
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      // 認証確認と公開データ取得を並列で実行
+      const [authResult, publicResult, statsResult] = await Promise.allSettled([
+        supabase.auth.getUser(),
+        supabase.from('safe_salesperson_profiles').select('*').eq('id', id).single(),
+        supabase.rpc('get_salesperson_review_stats', { p_salesperson_id: id }),
+      ])
+
+      const user = authResult.status === 'fulfilled' && !authResult.value.error
+        ? authResult.value.data.user : null
       setUser(user)
 
-      if (user) {
-        const { data: ownProfile } = await supabase
-          .from('salesperson_profiles')
-          .select('id')
-          .eq('user_id', user.id)
-          .maybeSingle()
-        if (ownProfile && ownProfile.id !== id && !isPreview) {
-          router.replace('/salesperson/dashboard')
-          return
-        }
+      if (publicResult.status === 'fulfilled' && publicResult.value.data) {
+        setAgent(publicResult.value.data)
+      }
+      if (statsResult.status === 'fulfilled' && statsResult.value.data) {
+        setReviewStats(statsResult.value.data)
       }
 
-      const { data: publicData } = await supabase
-        .from('safe_salesperson_profiles')
-        .select('*')
-        .eq('id', id)
-        .single()
-      if (publicData) setAgent(publicData)
-
-      const { data: stats } = await supabase.rpc('get_salesperson_review_stats', { p_salesperson_id: id })
-      if (stats) setReviewStats(stats)
-
       if (user) {
-        const { data: full } = await supabase
-          .from('salesperson_profiles')
-          .select('real_name, family_name, given_name, bio, contract_count')
-          .eq('id', id)
-          .single()
-        if (!full && searchParams.get('autoUnlock') === '1') {
-          setShowConfirmModal(true)
-          if (typeof window !== 'undefined') {
-            const url = new URL(window.location.href)
-            url.searchParams.delete('autoUnlock')
-            window.history.replaceState({}, '', url.pathname + url.search + url.hash)
+        try {
+          const { data: ownProfile } = await supabase
+            .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
+          if (ownProfile && ownProfile.id !== id && !isPreview) {
+            router.replace('/salesperson/dashboard')
+            return
           }
-        }
 
-        if (full) {
-          setUnlockedData(full)
-          await fetchReviews(supabase, user.id)
+          const { data: full } = await supabase
+            .from('salesperson_profiles')
+            .select('real_name, family_name, given_name, bio, contract_count')
+            .eq('id', id)
+            .single()
 
-          const [{ data: anonData }, { data: myPhaseData }] = await Promise.all([
-            supabase
-              .from('anonymous_reviews')
-              .select('id, rating, content, phase, source, created_at')
-              .eq('salesperson_id', id)
-              .eq('status', 'visible')
-              .order('created_at', { ascending: false }),
-            supabase.rpc('get_my_submitted_phases', { p_salesperson_id: id }),
-          ])
-          if (anonData) setAllAnonReviews(anonData)
-          if (myPhaseData) {
-            setUserSubmittedPhases(
-              (myPhaseData as { phase: string; review_id: string }[])
-                .filter((r) => r.phase !== 'pre_contract')
-                .map((r) => r.phase)
-            )
-            setMyReviewIds(new Set((myPhaseData as { phase: string; review_id: string }[]).map((r) => r.review_id)))
+          if (!full && searchParams.get('autoUnlock') === '1') {
+            setShowConfirmModal(true)
+            if (typeof window !== 'undefined') {
+              const url = new URL(window.location.href)
+              url.searchParams.delete('autoUnlock')
+              window.history.replaceState({}, '', url.pathname + url.search + url.hash)
+            }
           }
-        }
 
-        const { data: fav } = await supabase
-          .from('favorites')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('salesperson_id', id)
-          .maybeSingle()
-        setIsFavorited(!!fav)
+          if (full) {
+            setUnlockedData(full)
+            await fetchReviews(supabase, user.id)
+
+            const [{ data: anonData }, { data: myPhaseData }] = await Promise.all([
+              supabase
+                .from('anonymous_reviews')
+                .select('id, rating, content, phase, source, created_at')
+                .eq('salesperson_id', id)
+                .eq('status', 'visible')
+                .order('created_at', { ascending: false }),
+              supabase.rpc('get_my_submitted_phases', { p_salesperson_id: id }),
+            ])
+            if (anonData) setAllAnonReviews(anonData)
+            if (myPhaseData) {
+              setUserSubmittedPhases(
+                (myPhaseData as { phase: string; review_id: string }[])
+                  .filter((r) => r.phase !== 'pre_contract')
+                  .map((r) => r.phase)
+              )
+              setMyReviewIds(new Set((myPhaseData as { phase: string; review_id: string }[]).map((r) => r.review_id)))
+            }
+          }
+
+          const { data: fav } = await supabase
+            .from('favorites').select('id').eq('user_id', user.id).eq('salesperson_id', id).maybeSingle()
+          setIsFavorited(!!fav)
+        } catch {
+          // ログイン済みユーザーの追加データ取得失敗は無視して公開データで表示継続
+        }
       }
     }
 
@@ -234,8 +235,22 @@ export default function SalespersonDetail() {
   }
 
   if (!agent) return (
-    <div className="min-h-screen bg-stone-100 flex items-center justify-center text-gray-400">
-      読み込み中...
+    <div className="min-h-screen bg-stone-100">
+      <Header backButton />
+      <div className="max-w-2xl mx-auto px-6 py-8 space-y-4 animate-pulse">
+        <div className="bg-white rounded-2xl p-8 space-y-4">
+          <div className="flex gap-4">
+            <div className="w-16 h-16 rounded-full bg-stone-200 shrink-0" />
+            <div className="flex-1 space-y-2 pt-1">
+              <div className="h-3 w-24 bg-stone-200 rounded" />
+              <div className="h-5 w-40 bg-stone-200 rounded" />
+              <div className="h-3 w-20 bg-stone-200 rounded" />
+            </div>
+          </div>
+          <div className="h-24 bg-stone-100 rounded-xl" />
+        </div>
+        <div className="bg-white rounded-2xl p-8 h-32 bg-stone-100 rounded-xl" />
+      </div>
     </div>
   )
 
@@ -842,5 +857,29 @@ export default function SalespersonDetail() {
 
       </div>
     </main>
+  )
+}
+
+export default function SalespersonDetail() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-stone-100">
+        <Header backButton />
+        <div className="max-w-2xl mx-auto px-6 py-8 space-y-4 animate-pulse">
+          <div className="bg-white rounded-2xl p-8 space-y-4">
+            <div className="flex gap-4">
+              <div className="w-16 h-16 rounded-full bg-stone-200 shrink-0" />
+              <div className="flex-1 space-y-2 pt-1">
+                <div className="h-3 w-24 bg-stone-200 rounded" />
+                <div className="h-5 w-40 bg-stone-200 rounded" />
+              </div>
+            </div>
+            <div className="h-24 bg-stone-100 rounded-xl" />
+          </div>
+        </div>
+      </div>
+    }>
+      <SalespersonDetailContent />
+    </Suspense>
   )
 }
