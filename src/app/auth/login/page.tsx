@@ -37,7 +37,7 @@ function LoginContent() {
       if (redirectParam) { window.location.href = redirectParam; return }
       const { data: sp } = await supabase
         .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
-      window.location.href = sp ? '/salesperson/dashboard' : '/'
+      window.location.href = sp ? '/salesperson/dashboard' : '/search'
     })
   }, [fromQr, searchParams])
 
@@ -87,7 +87,7 @@ function LoginContent() {
               .select('id')
               .eq('user_id', user.id)
               .maybeSingle()
-            window.location.href = sp ? '/salesperson/dashboard' : '/'
+            window.location.href = sp ? '/salesperson/dashboard' : '/search'
             return
           } else {
             window.location.href = '/'
