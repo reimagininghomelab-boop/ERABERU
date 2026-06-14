@@ -105,7 +105,7 @@ export default function Header({ backButton = false }: { backButton?: boolean })
               </Link>
             )}
             {userType === null && (
-              <span className="w-16 h-7 rounded-lg bg-stone-100 animate-pulse inline-block" />
+              <button onClick={handleSignOut} className="text-xs text-gray-400 hover:text-gray-600 transition">ログアウト</button>
             )}
           </div>
         </div>
@@ -146,7 +146,7 @@ export default function Header({ backButton = false }: { backButton?: boolean })
                 </Link>
               )}
               {userType === null && (
-                <span className="w-12 h-6 rounded-lg bg-stone-100 animate-pulse inline-block" />
+                <button onClick={handleSignOut} className="text-xs text-gray-400">ログアウト</button>
               )}
             </div>
           </div>
