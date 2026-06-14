@@ -412,10 +412,9 @@ function SearchContent() {
   const [filterPrefecture, setFilterPrefecture] = useState('')
   const [filterSpecialty, setFilterSpecialty] = useState('')
   const [filterQualification, setFilterQualification] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('id'))
   const [selectedReviews, setSelectedReviews] = useState<any[]>([])
   const [reviewsLoading, setReviewsLoading] = useState(false)
-  const [detailVisible, setDetailVisible] = useState(false)
   const [showAiModal, setShowAiModal] = useState(false)
   const [showLoginGate, setShowLoginGate] = useState(false)
   const [aiMode, setAiMode] = useState<{ query: string; results: AiMatchResult[] } | null>(null)
@@ -429,9 +428,6 @@ function SearchContent() {
   const [showContactedSection, setShowContactedSection] = useState(false)
   // 口コミ促進バナーを閉じたか
   const [bannerDismissed, setBannerDismissed] = useState(false)
-
-  const selectedIdRef = useRef(selectedId)
-  selectedIdRef.current = selectedId
 
   // スタイルフィルター名
   const activeStyleLabel = styleParam ? (QUADRANT_LABEL[STYLE_QUADRANT[styleParam] ?? ''] ?? null) : null
@@ -460,15 +456,16 @@ function SearchContent() {
     setReviewsLoading(false)
   }, [])
 
-  const handleSelectAgent = useCallback((agentId: string) => {
-    if (selectedIdRef.current === agentId) return
-    setDetailVisible(false)
-    setTimeout(() => {
-      setSelectedId(agentId)
-      fetchReviewsForAgent(agentId)
-      setDetailVisible(true)
-    }, 150)
-  }, [fetchReviewsForAgent])
+  const handleSelectAgent = (agentId: string) => {
+    if (agentId === selectedId) return
+    setSelectedId(agentId)
+    setSelectedReviews([])
+    fetchReviewsForAgent(agentId)
+    // URLにIDを反映してブラウザ履歴に残す
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('id', agentId)
+    router.replace(`/search?${params.toString()}`, { scroll: false })
+  }
 
   useEffect(() => {
     const supabase = createClient()
@@ -496,10 +493,13 @@ function SearchContent() {
       const publicData = publicResult.value.data ?? []
       setAgents(publicData)
       if (publicData.length > 0) {
-        const firstId = publicData[0].id
-        setSelectedId(firstId)
-        setDetailVisible(true)
-        fetchReviewsForAgent(firstId)
+        // URLの?idが一覧内に存在すればそれを選択、なければ先頭を選択
+        const urlId = searchParams.get('id')
+        const initialId = (urlId && publicData.find((a: any) => a.id === urlId))
+          ? urlId
+          : publicData[0].id
+        setSelectedId(initialId)
+        fetchReviewsForAgent(initialId)
       }
 
       // 認証確認（失敗しても未ログイン扱いで継続）
@@ -604,30 +604,27 @@ function SearchContent() {
 
   useEffect(() => {
     if (loading || agents.length === 0) return
-    if (filteredAgents.length === 0) { setSelectedId(null); setSelectedReviews([]); setDetailVisible(false); return }
-    const stillValid = filteredAgents.find((a) => a.id === selectedIdRef.current)
+    if (filteredAgents.length === 0) { setSelectedId(null); setSelectedReviews([]); return }
+    const stillValid = filteredAgents.find((a) => a.id === selectedId)
     if (!stillValid) {
       const firstId = filteredAgents[0].id
       setSelectedId(firstId)
       fetchReviewsForAgent(firstId)
-      setDetailVisible(true)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredAgents, loading])
 
   // contactedIds ロード後、選択中エージェントが接点済みになったら mainAgents 先頭に切り替える
   useEffect(() => {
-    if (!isLoggedIn || contactedIds.size === 0 || !selectedIdRef.current) return
-    if (contactedIds.has(selectedIdRef.current)) {
+    if (!isLoggedIn || contactedIds.size === 0 || !selectedId) return
+    if (contactedIds.has(selectedId)) {
       const firstMain = filteredAgents.find((a) => !contactedIds.has(a.id))
       if (firstMain) {
         setSelectedId(firstMain.id)
         fetchReviewsForAgent(firstMain.id)
-        setDetailVisible(true)
       } else {
         setSelectedId(null)
         setSelectedReviews([])
-        setDetailVisible(false)
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -886,7 +883,7 @@ function SearchContent() {
                     詳細を見る
                   </Link>
                 </div>
-                <div style={{ opacity: detailVisible ? 1 : 0, transform: detailVisible ? 'translateY(0px)' : 'translateY(8px)', transition: 'opacity 200ms ease, transform 200ms ease' }}>
+                <div>
                   <DetailPanel
                     agent={selectedAgent}
                     unlockedData={unlockedMap[selectedAgent.id] ?? null}
