@@ -421,6 +421,7 @@ function SearchContent() {
   const [aiMode, setAiMode] = useState<{ query: string; results: AiMatchResult[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
   // ログイン施主の接点済み営業（オファー or 口コミ）
   const [contactedIds, setContactedIds] = useState<Set<string>>(new Set())
   // オファー済みで口コミ未投稿の営業（バナー表示用）
@@ -469,68 +470,77 @@ function SearchContent() {
     }, 150)
   }, [fetchReviewsForAgent])
 
-  const runLoad = useCallback(async () => {
+  useEffect(() => {
     const supabase = createClient()
-    setLoading(true)
-    setLoadError(false)
+    let cancelled = false
 
-    // 認証確認と公開データ取得を並列で実行（認証が遅くても営業一覧は表示できる）
-    const [authResult, publicResult] = await Promise.allSettled([
-      supabase.auth.getUser(),
-      supabase.from('safe_salesperson_profiles').select('*'),
-    ])
+    const load = async () => {
+      setLoading(true)
+      setLoadError(false)
 
-    // 公開データ取得失敗 → エラー表示
-    if (publicResult.status === 'rejected' || (publicResult.status === 'fulfilled' && publicResult.value.error)) {
-      setLoadError(true)
-      setLoading(false)
-      return
-    }
+      // 認証確認と公開データ取得を並列で実行（認証が遅くても営業一覧は表示できる）
+      const [authResult, publicResult] = await Promise.allSettled([
+        supabase.auth.getUser(),
+        supabase.from('safe_salesperson_profiles').select('*'),
+      ])
 
-    const publicData = publicResult.value.data ?? []
-    setAgents(publicData)
-    if (publicData.length > 0) {
-      const firstId = publicData[0].id
-      setSelectedId(firstId)
-      setDetailVisible(true)
-      fetchReviewsForAgent(firstId)
-    }
+      if (cancelled) return
 
-    // 認証確認（失敗しても未ログイン扱いで継続）
-    const user = authResult.status === 'fulfilled' && !authResult.value.error
-      ? authResult.value.data.user
-      : null
-
-    if (user) {
-      setIsLoggedIn(true)
-      try {
-        const { data: ownProfile } = await supabase
-          .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
-        if (ownProfile) { router.replace('/salesperson/dashboard'); return }
-
-        const [{ data: unlocked }, { data: myReviews }, { data: myOffers }] = await Promise.all([
-          supabase.from('salesperson_profiles').select('id, real_name, family_name, given_name'),
-          supabase.from('anonymous_reviews').select('salesperson_id').eq('user_id', user.id).neq('status', 'superseded'),
-          supabase.from('offers').select('salesperson_id').eq('buyer_id', user.id),
-        ])
-        if (unlocked) {
-          const map: Record<string, any> = {}
-          unlocked.forEach((u) => { map[u.id] = u })
-          setUnlockedMap(map)
-        }
-        const reviewedIds = new Set((myReviews ?? []).map((r: any) => r.salesperson_id as string))
-        const offeredIds = new Set((myOffers ?? []).map((o: any) => o.salesperson_id as string))
-        setContactedIds(new Set([...reviewedIds, ...offeredIds]))
-        setPendingReviewCount([...offeredIds].filter((id) => !reviewedIds.has(id)).length)
-      } catch {
-        // ログイン済みユーザーの追加データ取得失敗は無視して公開データで表示継続
+      // 公開データ取得失敗 → エラー表示
+      if (publicResult.status === 'rejected' || (publicResult.status === 'fulfilled' && publicResult.value.error)) {
+        setLoadError(true)
+        setLoading(false)
+        return
       }
+
+      const publicData = publicResult.value.data ?? []
+      setAgents(publicData)
+      if (publicData.length > 0) {
+        const firstId = publicData[0].id
+        setSelectedId(firstId)
+        setDetailVisible(true)
+        fetchReviewsForAgent(firstId)
+      }
+
+      // 認証確認（失敗しても未ログイン扱いで継続）
+      const user = authResult.status === 'fulfilled' && !authResult.value.error
+        ? authResult.value.data.user
+        : null
+
+      if (user) {
+        setIsLoggedIn(true)
+        try {
+          const { data: ownProfile } = await supabase
+            .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
+          if (ownProfile) { router.replace('/salesperson/dashboard'); return }
+
+          const [{ data: unlocked }, { data: myReviews }, { data: myOffers }] = await Promise.all([
+            supabase.from('salesperson_profiles').select('id, real_name, family_name, given_name'),
+            supabase.from('anonymous_reviews').select('salesperson_id').eq('user_id', user.id).neq('status', 'superseded'),
+            supabase.from('offers').select('salesperson_id').eq('buyer_id', user.id),
+          ])
+          if (cancelled) return
+          if (unlocked) {
+            const map: Record<string, any> = {}
+            unlocked.forEach((u) => { map[u.id] = u })
+            setUnlockedMap(map)
+          }
+          const reviewedIds = new Set((myReviews ?? []).map((r: any) => r.salesperson_id as string))
+          const offeredIds = new Set((myOffers ?? []).map((o: any) => o.salesperson_id as string))
+          setContactedIds(new Set([...reviewedIds, ...offeredIds]))
+          setPendingReviewCount([...offeredIds].filter((id) => !reviewedIds.has(id)).length)
+        } catch {
+          // ログイン済みユーザーの追加データ取得失敗は無視して公開データで表示継続
+        }
+      }
+
+      if (!cancelled) setLoading(false)
     }
 
-    setLoading(false)
-  }, [fetchReviewsForAgent, router])
-
-  useEffect(() => { runLoad() }, [runLoad])
+    load()
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryCount])
 
   // ?ai=1 で自動的にAIモーダルを開く
   useEffect(() => {
@@ -631,7 +641,7 @@ function SearchContent() {
         <p className="text-base font-bold text-gray-700">データの取得に失敗しました</p>
         <p className="text-sm text-gray-400">ネットワーク接続を確認してからもう一度お試しください。</p>
         <button
-          onClick={runLoad}
+          onClick={() => setRetryCount((c) => c + 1)}
           className="mt-2 bg-teal-500 hover:bg-teal-400 text-white font-bold px-6 py-3 rounded-xl text-sm transition"
         >
           再試行する
