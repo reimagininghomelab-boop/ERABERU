@@ -495,7 +495,7 @@ function SearchContent() {
       if (publicData.length > 0) {
         // URLの?idが一覧内に存在すればそれを選択、なければ先頭を選択
         const urlId = searchParams.get('id')
-        const initialId = (urlId && publicData.find((a: any) => a.id === urlId))
+        const initialId = (urlId && publicData.find((a: any) => String(a.id) === String(urlId)))
           ? urlId
           : publicData[0].id
         setSelectedId(initialId)
@@ -605,7 +605,7 @@ function SearchContent() {
   useEffect(() => {
     if (loading || agents.length === 0) return
     if (filteredAgents.length === 0) { setSelectedId(null); setSelectedReviews([]); return }
-    const stillValid = filteredAgents.find((a) => a.id === selectedId)
+    const stillValid = filteredAgents.find((a) => String(a.id) === String(selectedId))
     if (!stillValid) {
       const firstId = filteredAgents[0].id
       setSelectedId(firstId)
@@ -668,7 +668,10 @@ function SearchContent() {
     </div>
   )
 
-  const selectedAgent = selectedId ? (agents.find((a) => a.id === selectedId) ?? null) : null
+  // IDは型差(string/number)を吸収してString()で比較
+  const selectedAgent = selectedId
+    ? (agents.find((a) => String(a.id) === String(selectedId)) ?? null)
+    : null
   const stickyDisplayName = selectedAgent
     ? (unlockedMap[selectedAgent.id]
         ? (unlockedMap[selectedAgent.id].real_name ?? (selectedAgent.name_initials ? `${selectedAgent.name_initials} さん` : '---'))
@@ -864,7 +867,14 @@ function SearchContent() {
 
           {/* 右：詳細パネル（58%） */}
           <div className="flex-1 overflow-y-auto slim-scroll">
-            {selectedAgent ? (
+            {displayedAgents.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-gray-400">
+                <div className="text-center">
+                  <p className="text-4xl mb-3">👤</p>
+                  <p className="text-sm">{agents.length === 0 ? '現在登録中の営業マンはいません' : '条件に一致する営業マンが見つかりません'}</p>
+                </div>
+              </div>
+            ) : selectedAgent ? (
               <>
                 <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-sm border-b border-stone-100 px-4 py-2.5 flex items-center justify-between mb-3 rounded-t-2xl">
                   <div className="flex items-center gap-2.5 min-w-0">
@@ -883,7 +893,8 @@ function SearchContent() {
                     詳細を見る
                   </Link>
                 </div>
-                <div>
+                {/* key変更でre-mountしてCSSアニメーションでフェードイン */}
+                <div key={selectedAgent.id} className="detail-panel-enter">
                   <DetailPanel
                     agent={selectedAgent}
                     unlockedData={unlockedMap[selectedAgent.id] ?? null}
@@ -895,7 +906,7 @@ function SearchContent() {
               </>
             ) : (
               <div className="h-full flex items-center justify-center text-gray-400">
-                <p className="text-sm">左から営業マンを選んでください</p>
+                <p className="text-sm">読み込み中...</p>
               </div>
             )}
           </div>
