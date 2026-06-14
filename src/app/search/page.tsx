@@ -420,6 +420,7 @@ function SearchContent() {
   const [showLoginGate, setShowLoginGate] = useState(false)
   const [aiMode, setAiMode] = useState<{ query: string; results: AiMatchResult[] } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   // ログイン施主の接点済み営業（オファー or 口コミ）
   const [contactedIds, setContactedIds] = useState<Set<string>>(new Set())
   // オファー済みで口コミ未投稿の営業（バナー表示用）
@@ -468,59 +469,68 @@ function SearchContent() {
     }, 150)
   }, [fetchReviewsForAgent])
 
-  useEffect(() => {
+  const runLoad = useCallback(async () => {
     const supabase = createClient()
-    const load = async () => {
+    setLoading(true)
+    setLoadError(false)
+
+    // 認証確認と公開データ取得を並列で実行（認証が遅くても営業一覧は表示できる）
+    const [authResult, publicResult] = await Promise.allSettled([
+      supabase.auth.getUser(),
+      supabase.from('safe_salesperson_profiles').select('*'),
+    ])
+
+    // 公開データ取得失敗 → エラー表示
+    if (publicResult.status === 'rejected' || (publicResult.status === 'fulfilled' && publicResult.value.error)) {
+      setLoadError(true)
+      setLoading(false)
+      return
+    }
+
+    const publicData = publicResult.value.data ?? []
+    setAgents(publicData)
+    if (publicData.length > 0) {
+      const firstId = publicData[0].id
+      setSelectedId(firstId)
+      setDetailVisible(true)
+      fetchReviewsForAgent(firstId)
+    }
+
+    // 認証確認（失敗しても未ログイン扱いで継続）
+    const user = authResult.status === 'fulfilled' && !authResult.value.error
+      ? authResult.value.data.user
+      : null
+
+    if (user) {
+      setIsLoggedIn(true)
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setIsLoggedIn(true)
-          const { data: ownProfile } = await supabase
-            .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
-          if (ownProfile) { router.replace('/salesperson/dashboard'); return }
+        const { data: ownProfile } = await supabase
+          .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
+        if (ownProfile) { router.replace('/salesperson/dashboard'); return }
+
+        const [{ data: unlocked }, { data: myReviews }, { data: myOffers }] = await Promise.all([
+          supabase.from('salesperson_profiles').select('id, real_name, family_name, given_name'),
+          supabase.from('anonymous_reviews').select('salesperson_id').eq('user_id', user.id).neq('status', 'superseded'),
+          supabase.from('offers').select('salesperson_id').eq('buyer_id', user.id),
+        ])
+        if (unlocked) {
+          const map: Record<string, any> = {}
+          unlocked.forEach((u) => { map[u.id] = u })
+          setUnlockedMap(map)
         }
-        const { data: publicData } = await supabase.from('safe_salesperson_profiles').select('*')
-        if (publicData) {
-          setAgents(publicData)
-          if (publicData.length > 0) {
-            const firstId = publicData[0].id
-            setSelectedId(firstId)
-            setDetailVisible(true)
-            fetchReviewsForAgent(firstId)
-          }
-        }
-        if (user) {
-          const [
-            { data: unlocked },
-            { data: myReviews },
-            { data: myOffers },
-          ] = await Promise.all([
-            supabase.from('salesperson_profiles').select('id, real_name, family_name, given_name'),
-            supabase.from('anonymous_reviews').select('salesperson_id').eq('user_id', user.id).neq('status', 'superseded'),
-            supabase.from('offers').select('salesperson_id').eq('buyer_id', user.id),
-          ])
-          if (unlocked) {
-            const map: Record<string, any> = {}
-            unlocked.forEach((u) => { map[u.id] = u })
-            setUnlockedMap(map)
-          }
-          // 接点済み営業の集計
-          const reviewedIds = new Set((myReviews ?? []).map((r: any) => r.salesperson_id as string))
-          const offeredIds = new Set((myOffers ?? []).map((o: any) => o.salesperson_id as string))
-          const contacted = new Set([...reviewedIds, ...offeredIds])
-          setContactedIds(contacted)
-          // オファー済みで口コミ未投稿数
-          const pendingCount = [...offeredIds].filter((id) => !reviewedIds.has(id)).length
-          setPendingReviewCount(pendingCount)
-        }
+        const reviewedIds = new Set((myReviews ?? []).map((r: any) => r.salesperson_id as string))
+        const offeredIds = new Set((myOffers ?? []).map((o: any) => o.salesperson_id as string))
+        setContactedIds(new Set([...reviewedIds, ...offeredIds]))
+        setPendingReviewCount([...offeredIds].filter((id) => !reviewedIds.has(id)).length)
       } catch {
-        // エラーでもローディングを解除してページを表示する
-      } finally {
-        setLoading(false)
+        // ログイン済みユーザーの追加データ取得失敗は無視して公開データで表示継続
       }
     }
-    load()
-  }, [])
+
+    setLoading(false)
+  }, [fetchReviewsForAgent, router])
+
+  useEffect(() => { runLoad() }, [runLoad])
 
   // ?ai=1 で自動的にAIモーダルを開く
   useEffect(() => {
@@ -612,6 +622,23 @@ function SearchContent() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactedIds, isLoggedIn])
+
+  if (loadError) return (
+    <div className="min-h-screen bg-stone-50">
+      <Header />
+      <div className="max-w-6xl mx-auto px-4 md:px-6 py-20 flex flex-col items-center gap-4 text-center">
+        <p className="text-4xl">⚠️</p>
+        <p className="text-base font-bold text-gray-700">データの取得に失敗しました</p>
+        <p className="text-sm text-gray-400">ネットワーク接続を確認してからもう一度お試しください。</p>
+        <button
+          onClick={runLoad}
+          className="mt-2 bg-teal-500 hover:bg-teal-400 text-white font-bold px-6 py-3 rounded-xl text-sm transition"
+        >
+          再試行する
+        </button>
+      </div>
+    </div>
+  )
 
   if (loading) return (
     <div className="min-h-screen bg-stone-50">
