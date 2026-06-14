@@ -9,7 +9,7 @@ const ADMIN_EMAILS = ['reimagining.home.lab@gmail.com', '1989yo55@gmail.com']
 type UserType = 'anon' | 'buyer' | 'salesperson' | 'admin'
 
 export default function Header({ backButton = false }: { backButton?: boolean }) {
-  const [userType, setUserType] = useState<UserType>('anon')
+  const [userType, setUserType] = useState<UserType | null>(null) // null = 認証状態確認中
   const router = useRouter()
   const pathname = usePathname()
 
@@ -37,8 +37,6 @@ export default function Header({ backButton = false }: { backButton?: boolean })
     createClient().auth.signOut()
     window.location.href = '/'
   }
-
-  const isLoggedIn = userType !== 'anon'
 
   return (
     <header className="bg-white border-b border-stone-200 sticky top-0 z-40">
@@ -72,7 +70,7 @@ export default function Header({ backButton = false }: { backButton?: boolean })
           </div>
 
           <div className="flex items-center gap-3">
-            {!isLoggedIn && (
+            {userType === 'anon' && (
               pathname === '/for-salespeople' ? (
                 <Link href="/" className="text-xs text-gray-400 hover:text-gray-600 transition hidden lg:block">
                   TOPへ戻る
@@ -105,6 +103,9 @@ export default function Header({ backButton = false }: { backButton?: boolean })
               <Link href="/auth/login" className="text-sm text-teal-600 hover:text-teal-500 font-semibold px-4 py-1.5 rounded-lg border border-teal-200 hover:bg-teal-50 transition">
                 ログイン
               </Link>
+            )}
+            {userType === null && (
+              <span className="w-16 h-7 rounded-lg bg-stone-100 animate-pulse inline-block" />
             )}
           </div>
         </div>
@@ -143,6 +144,9 @@ export default function Header({ backButton = false }: { backButton?: boolean })
                 <Link href="/auth/login" className="text-xs text-teal-600 font-semibold px-3 py-1 rounded-lg border border-teal-200 bg-teal-50">
                   ログイン
                 </Link>
+              )}
+              {userType === null && (
+                <span className="w-12 h-6 rounded-lg bg-stone-100 animate-pulse inline-block" />
               )}
             </div>
           </div>

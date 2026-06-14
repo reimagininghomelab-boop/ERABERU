@@ -4,6 +4,16 @@ import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 
+function toJapanese(msg: string): string {
+  if (msg.includes('Invalid login credentials')) return 'メールアドレスまたはパスワードが正しくありません。'
+  if (msg.includes('Email not confirmed')) return 'メールアドレスが確認されていません。登録時のメールをご確認ください。'
+  if (msg.includes('User already registered')) return 'このメールアドレスはすでに登録されています。'
+  if (msg.includes('Password should be at least')) return 'パスワードは6文字以上で入力してください。'
+  if (msg.includes('breach') || msg.includes('leaked')) return 'このパスワードは過去のデータ漏洩で流出したものです。別のパスワードに変更してください。'
+  if (msg.includes('rate limit') || msg.includes('too many')) return 'ログイン試行が多すぎます。しばらく待ってから再試行してください。'
+  return msg
+}
+
 function LoginContent() {
   const searchParams = useSearchParams()
   const fromQr = searchParams.get('from') === 'qr'
@@ -16,6 +26,20 @@ function LoginContent() {
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [qrLinked, setQrLinked] = useState(false)
+
+  // すでにログイン済みなら適切なページへリダイレクト
+  useEffect(() => {
+    if (fromQr) return
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return
+      const redirectParam = searchParams.get('redirect')
+      if (redirectParam) { window.location.href = redirectParam; return }
+      const { data: sp } = await supabase
+        .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
+      window.location.href = sp ? '/salesperson/dashboard' : '/'
+    })
+  }, [fromQr, searchParams])
 
   // QR経由ログイン後: 口コミ紐づけ＋本サイトリンク表示
   useEffect(() => {
@@ -49,11 +73,7 @@ function LoginContent() {
       if (mode === 'login') {
         const { data: signInData, error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) {
-          if (error.message.includes('password') && (error.message.includes('breach') || error.message.includes('leaked'))) {
-            setError('このパスワードは過去のデータ漏洩で流出したものです。別のパスワードに変更してください。')
-          } else {
-            setError(error.message)
-          }
+          setError(toJapanese(error.message))
         } else if (!fromQr) {
           // セッション確立後にアカウント種別を判定して直接リダイレクト（race condition 回避）
           const user = signInData.user
