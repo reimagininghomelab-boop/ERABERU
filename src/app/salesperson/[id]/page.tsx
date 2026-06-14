@@ -111,6 +111,11 @@ export default function SalespersonDetail() {
           .single()
         if (!full && searchParams.get('autoUnlock') === '1') {
           setShowConfirmModal(true)
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href)
+            url.searchParams.delete('autoUnlock')
+            window.history.replaceState({}, '', url.pathname + url.search + url.hash)
+          }
         }
 
         if (full) {
