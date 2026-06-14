@@ -681,6 +681,17 @@ function SearchContent() {
 
   return (
     <main className="min-h-screen bg-stone-50">
+      {/* 【診断用: 確認後削除】 */}
+      <div style={{ position: 'fixed', top: 0, left: 0, zIndex: 99999, background: '#fff', color: '#000', padding: '8px', fontSize: '12px', border: '2px solid red', maxWidth: 320 }}>
+        render: ok<br />
+        loading: {String(loading)}<br />
+        loadError: {String(loadError)}<br />
+        agents: {agents.length}<br />
+        filtered: {filteredAgents.length}<br />
+        selectedId: {selectedId ?? 'null'}<br />
+        selectedAgent: {selectedAgent ? 'yes' : 'no'}
+      </div>
+
       <Header />
 
       {/* ページタイトル */}

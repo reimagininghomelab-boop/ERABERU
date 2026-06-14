@@ -25,13 +25,16 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* 詳細パネル切り替え時のフェードイン（key変更によるre-mount用） */
-@keyframes detail-fadein {
+/* 詳細パネル切り替え時のフェードイン（診断中: 一時無効化） */
+/* @keyframes detail-fadein {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .detail-panel-enter {
   animation: detail-fadein 180ms ease forwards;
+} */
+.detail-panel-enter {
+  opacity: 1;
 }
 
 /* 細いカスタムスクロールバー（左右パネル用） */
