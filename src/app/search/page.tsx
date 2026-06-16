@@ -475,72 +475,65 @@ function SearchContent() {
       setLoading(true)
       setLoadError(false)
 
-      // 公開データは認証クライアントのトークンリフレッシュキューに巻き込まれないよう
-      // anonキーで直接fetchする（ログイン済みでも必ず取得できる）
       const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
       const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-      const [authResult, publicResult] = await Promise.allSettled([
-        supabase.auth.getUser(),
-        fetch(`${SUPA_URL}/rest/v1/safe_salesperson_profiles?select=*`, {
+      // ── Step 1: 公開データを先に取得（getUser()を待たない） ──
+      // anonキーで直接fetchしてSupabaseクライアントの認証キューを完全に迂回する
+      let publicData: any[] = []
+      try {
+        const res = await fetch(`${SUPA_URL}/rest/v1/safe_salesperson_profiles?select=*`, {
           headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
-        }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
-      ])
-
-      if (cancelled) return
-
-      // 公開データ取得失敗 → エラー表示
-      if (publicResult.status === 'rejected') {
-        setLoadError(true)
-        setLoading(false)
+        })
+        if (!res.ok) throw new Error(`${res.status}`)
+        publicData = await res.json()
+      } catch {
+        if (!cancelled) { setLoadError(true); setLoading(false) }
         return
       }
 
-      const publicData: any[] = Array.isArray(publicResult.value) ? publicResult.value : []
+      if (cancelled) return
+
+      // ── Step 2: 一覧を即時表示（認証チェック完了を待たない） ──
       setAgents(publicData)
       if (publicData.length > 0) {
-        // URLの?idが一覧内に存在すればそれを選択、なければ先頭を選択
         const urlId = searchParams.get('id')
         const initialId = (urlId && publicData.find((a: any) => String(a.id) === String(urlId)))
-          ? urlId
-          : publicData[0].id
+          ? urlId : publicData[0].id
         setSelectedId(initialId)
         fetchReviewsForAgent(initialId)
       }
-
-      // 認証確認（失敗しても未ログイン扱いで継続）
-      const user = authResult.status === 'fulfilled' && !authResult.value.error
-        ? authResult.value.data.user
-        : null
-
-      if (user) {
-        setIsLoggedIn(true)
-        try {
-          const { data: ownProfile } = await supabase
-            .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
-          if (ownProfile) { router.replace('/salesperson/dashboard'); return }
-
-          const [{ data: unlocked }, { data: myReviews }, { data: myOffers }] = await Promise.all([
-            supabase.from('salesperson_profiles').select('id, real_name, family_name, given_name'),
-            supabase.from('anonymous_reviews').select('salesperson_id').eq('user_id', user.id).neq('status', 'superseded'),
-            supabase.from('offers').select('salesperson_id').eq('buyer_id', user.id),
-          ])
-          if (cancelled) return
-          if (unlocked) {
-            const map: Record<string, any> = {}
-            unlocked.forEach((u) => { map[u.id] = u })
-            setUnlockedMap(map)
-          }
-          const reviewedIds = new Set((myReviews ?? []).map((r: any) => r.salesperson_id as string))
-          const offeredIds = new Set((myOffers ?? []).map((o: any) => o.salesperson_id as string))
-          setContactedIds(new Set([...reviewedIds, ...offeredIds]))
-          setPendingReviewCount([...offeredIds].filter((id) => !reviewedIds.has(id)).length)
-        } catch {
-          // ログイン済みユーザーの追加データ取得失敗は無視して公開データで表示継続
-        }
-      }
-
       if (!cancelled) setLoading(false)
+
+      // ── Step 3: 認証チェック（一覧表示後に非同期で実行） ──
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user || cancelled) return
+
+        setIsLoggedIn(true)
+
+        const { data: ownProfile } = await supabase
+          .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
+        if (ownProfile) { router.replace('/salesperson/dashboard'); return }
+
+        const [{ data: unlocked }, { data: myReviews }, { data: myOffers }] = await Promise.all([
+          supabase.from('salesperson_profiles').select('id, real_name, family_name, given_name'),
+          supabase.from('anonymous_reviews').select('salesperson_id').eq('user_id', user.id).neq('status', 'superseded'),
+          supabase.from('offers').select('salesperson_id').eq('buyer_id', user.id),
+        ])
+        if (cancelled) return
+        if (unlocked) {
+          const map: Record<string, any> = {}
+          unlocked.forEach((u) => { map[u.id] = u })
+          setUnlockedMap(map)
+        }
+        const reviewedIds = new Set((myReviews ?? []).map((r: any) => r.salesperson_id as string))
+        const offeredIds = new Set((myOffers ?? []).map((o: any) => o.salesperson_id as string))
+        setContactedIds(new Set([...reviewedIds, ...offeredIds]))
+        setPendingReviewCount([...offeredIds].filter((id) => !reviewedIds.has(id)).length)
+      } catch {
+        // 認証チェック失敗は無視（公開データは既に表示済み）
+      }
     }
 
     load()
