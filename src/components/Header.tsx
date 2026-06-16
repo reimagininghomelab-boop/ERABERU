@@ -34,8 +34,11 @@ export default function Header({ backButton = false }: { backButton?: boolean })
   }, [])
 
   const handleSignOut = () => {
-    createClient().auth.signOut()
-    window.location.href = '/'
+    // signOutがハングしても2秒後に強制遷移（トークンリフレッシュ中でも確実にログアウト）
+    Promise.race([
+      createClient().auth.signOut(),
+      new Promise<void>(resolve => setTimeout(resolve, 2000)),
+    ]).finally(() => { window.location.href = '/' })
   }
 
   return (

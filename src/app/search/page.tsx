@@ -475,22 +475,28 @@ function SearchContent() {
       setLoading(true)
       setLoadError(false)
 
-      // 認証確認と公開データ取得を並列で実行（認証が遅くても営業一覧は表示できる）
+      // 公開データは認証クライアントのトークンリフレッシュキューに巻き込まれないよう
+      // anonキーで直接fetchする（ログイン済みでも必ず取得できる）
+      const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+      const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
       const [authResult, publicResult] = await Promise.allSettled([
         supabase.auth.getUser(),
-        supabase.from('safe_salesperson_profiles').select('*'),
+        fetch(`${SUPA_URL}/rest/v1/safe_salesperson_profiles?select=*`, {
+          headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
+        }).then(r => r.ok ? r.json() : Promise.reject(r.status)),
       ])
 
       if (cancelled) return
 
       // 公開データ取得失敗 → エラー表示
-      if (publicResult.status === 'rejected' || (publicResult.status === 'fulfilled' && publicResult.value.error)) {
+      if (publicResult.status === 'rejected') {
         setLoadError(true)
         setLoading(false)
         return
       }
 
-      const publicData = publicResult.value.data ?? []
+      const publicData: any[] = Array.isArray(publicResult.value) ? publicResult.value : []
       setAgents(publicData)
       if (publicData.length > 0) {
         // URLの?idが一覧内に存在すればそれを選択、なければ先頭を選択
