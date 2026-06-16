@@ -34,11 +34,18 @@ export default function Header({ backButton = false }: { backButton?: boolean })
   }, [])
 
   const handleSignOut = () => {
-    // signOutがハングしても2秒後に強制遷移（トークンリフレッシュ中でも確実にログアウト）
     Promise.race([
       createClient().auth.signOut(),
       new Promise<void>(resolve => setTimeout(resolve, 2000)),
-    ]).finally(() => { window.location.href = '/' })
+    ]).finally(() => {
+      // signOutがハングしてもLocalStorageのセッションを強制削除してからTOPへ
+      try {
+        Object.keys(localStorage)
+          .filter(k => k.startsWith('sb-'))
+          .forEach(k => localStorage.removeItem(k))
+      } catch {}
+      window.location.href = '/'
+    })
   }
 
   return (
