@@ -17,7 +17,10 @@ export default function Header({ backButton = false }: { backButton?: boolean })
     const supabase = createClient()
 
     const detect = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      // getSession()はローカルキャッシュを読むだけでネットワーク不要
+      // getUser()と違いトークンリフレッシュを起動しないためハングしない
+      const { data: { session } } = await supabase.auth.getSession()
+      const user = session?.user ?? null
       if (!user) { setUserType('anon'); return }
       if (ADMIN_EMAILS.includes(user.email ?? '')) { setUserType('admin'); return }
       const { data: sp } = await supabase
@@ -109,7 +112,7 @@ export default function Header({ backButton = false }: { backButton?: boolean })
               </Link>
             )}
             {userType === null && (
-              <button onClick={handleSignOut} className="text-xs text-gray-400 hover:text-gray-600 transition">ログアウト</button>
+              <span className="w-16 h-5 bg-stone-100 rounded animate-pulse inline-block" />
             )}
           </div>
         </div>
