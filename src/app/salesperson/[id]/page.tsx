@@ -78,78 +78,81 @@ function SalespersonDetailContent() {
     const supabase = createClient()
 
     const load = async () => {
-      // 認証確認と公開データ取得を並列で実行
-      const [authResult, publicResult, statsResult] = await Promise.allSettled([
-        supabase.auth.getUser(),
-        supabase.from('safe_salesperson_profiles').select('*').eq('id', id).single(),
+      const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+      const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+      // Step1: 公開データを先に取得（getUser()を待たない）
+      const [publicResult, statsResult] = await Promise.allSettled([
+        fetch(`${SUPA_URL}/rest/v1/safe_salesperson_profiles?select=*&id=eq.${id}`, {
+          headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
+        }).then(r => r.ok ? r.json().then((arr: any[]) => arr[0] ?? null) : null),
         supabase.rpc('get_salesperson_review_stats', { p_salesperson_id: id }),
       ])
 
-      const user = authResult.status === 'fulfilled' && !authResult.value.error
-        ? authResult.value.data.user : null
-      setUser(user)
-
-      if (publicResult.status === 'fulfilled' && publicResult.value.data) {
-        setAgent(publicResult.value.data)
+      if (publicResult.status === 'fulfilled' && publicResult.value) {
+        setAgent(publicResult.value)
       }
       if (statsResult.status === 'fulfilled' && statsResult.value.data) {
         setReviewStats(statsResult.value.data)
       }
 
-      if (user) {
-        try {
-          const { data: ownProfile } = await supabase
-            .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
-          if (ownProfile && ownProfile.id !== id && !isPreview) {
-            router.replace('/salesperson/dashboard')
-            return
-          }
+      // Step2: 認証チェック（公開データ表示後に非同期で実行）
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+        setUser(user)
 
-          const { data: full } = await supabase
-            .from('salesperson_profiles')
-            .select('real_name, family_name, given_name, bio, contract_count')
-            .eq('id', id)
-            .single()
-
-          if (!full && searchParams.get('autoUnlock') === '1') {
-            setShowConfirmModal(true)
-            if (typeof window !== 'undefined') {
-              const url = new URL(window.location.href)
-              url.searchParams.delete('autoUnlock')
-              window.history.replaceState({}, '', url.pathname + url.search + url.hash)
-            }
-          }
-
-          if (full) {
-            setUnlockedData(full)
-            await fetchReviews(supabase, user.id)
-
-            const [{ data: anonData }, { data: myPhaseData }] = await Promise.all([
-              supabase
-                .from('anonymous_reviews')
-                .select('id, rating, content, phase, source, created_at')
-                .eq('salesperson_id', id)
-                .eq('status', 'visible')
-                .order('created_at', { ascending: false }),
-              supabase.rpc('get_my_submitted_phases', { p_salesperson_id: id }),
-            ])
-            if (anonData) setAllAnonReviews(anonData)
-            if (myPhaseData) {
-              setUserSubmittedPhases(
-                (myPhaseData as { phase: string; review_id: string }[])
-                  .filter((r) => r.phase !== 'pre_contract')
-                  .map((r) => r.phase)
-              )
-              setMyReviewIds(new Set((myPhaseData as { phase: string; review_id: string }[]).map((r) => r.review_id)))
-            }
-          }
-
-          const { data: fav } = await supabase
-            .from('favorites').select('id').eq('user_id', user.id).eq('salesperson_id', id).maybeSingle()
-          setIsFavorited(!!fav)
-        } catch {
-          // ログイン済みユーザーの追加データ取得失敗は無視して公開データで表示継続
+        const { data: ownProfile } = await supabase
+          .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
+        if (ownProfile && ownProfile.id !== id && !isPreview) {
+          router.replace('/salesperson/dashboard')
+          return
         }
+
+        const { data: full } = await supabase
+          .from('salesperson_profiles')
+          .select('real_name, family_name, given_name, bio, contract_count')
+          .eq('id', id)
+          .single()
+
+        if (!full && searchParams.get('autoUnlock') === '1') {
+          setShowConfirmModal(true)
+          if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href)
+            url.searchParams.delete('autoUnlock')
+            window.history.replaceState({}, '', url.pathname + url.search + url.hash)
+          }
+        }
+
+        if (full) {
+          setUnlockedData(full)
+          await fetchReviews(supabase, user.id)
+
+          const [{ data: anonData }, { data: myPhaseData }] = await Promise.all([
+            supabase
+              .from('anonymous_reviews')
+              .select('id, rating, content, phase, source, created_at')
+              .eq('salesperson_id', id)
+              .eq('status', 'visible')
+              .order('created_at', { ascending: false }),
+            supabase.rpc('get_my_submitted_phases', { p_salesperson_id: id }),
+          ])
+          if (anonData) setAllAnonReviews(anonData)
+          if (myPhaseData) {
+            setUserSubmittedPhases(
+              (myPhaseData as { phase: string; review_id: string }[])
+                .filter((r) => r.phase !== 'pre_contract')
+                .map((r) => r.phase)
+            )
+            setMyReviewIds(new Set((myPhaseData as { phase: string; review_id: string }[]).map((r) => r.review_id)))
+          }
+        }
+
+        const { data: fav } = await supabase
+          .from('favorites').select('id').eq('user_id', user.id).eq('salesperson_id', id).maybeSingle()
+        setIsFavorited(!!fav)
+      } catch {
+        // 認証チェック失敗は無視（公開データは既に表示済み）
       }
     }
 
