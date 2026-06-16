@@ -33,28 +33,13 @@ export default function Header({ backButton = false }: { backButton?: boolean })
     return () => subscription.unsubscribe()
   }, [])
 
-  const handleSignOut = () => {
-    Promise.race([
-      createClient().auth.signOut(),
-      new Promise<void>(resolve => setTimeout(resolve, 2000)),
-    ]).finally(() => {
-      // @supabase/ssr はCookieにセッションを保存するため、
-      // signOutがハングしてもCookie・LocalStorage両方を強制削除する
-      try {
-        // LocalStorage
-        Object.keys(localStorage)
-          .filter(k => k.startsWith('sb-'))
-          .forEach(k => localStorage.removeItem(k))
-        // Cookie（sb-で始まるものを期限切れにして削除）
-        document.cookie.split(';').forEach(c => {
-          const name = c.trim().split('=')[0]
-          if (name.startsWith('sb-')) {
-            document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
-          }
-        })
-      } catch {}
-      window.location.href = '/'
-    })
+  const handleSignOut = async () => {
+    try {
+      // scope:'local' はサーバーへのリクエストなしにローカルセッションのみ削除する
+      // トークンリフレッシュ中でもハングしない
+      await createClient().auth.signOut({ scope: 'local' })
+    } catch {}
+    window.location.href = '/'
   }
 
   return (
