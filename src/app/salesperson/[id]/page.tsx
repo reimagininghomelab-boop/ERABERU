@@ -81,19 +81,23 @@ function SalespersonDetailContent() {
       const SUPA_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
       const SUPA_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-      // Step1: 公開データを先に取得（getUser()を待たない）
+      // Step1: 公開データとstatsをanonキーで直接fetch（Supabaseクライアントの認証キューを迂回）
       const [publicResult, statsResult] = await Promise.allSettled([
         fetch(`${SUPA_URL}/rest/v1/safe_salesperson_profiles?select=*&id=eq.${id}`, {
           headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
         }).then(r => r.ok ? r.json().then((arr: any[]) => arr[0] ?? null) : null),
-        supabase.rpc('get_salesperson_review_stats', { p_salesperson_id: id }),
+        fetch(`${SUPA_URL}/rest/v1/rpc/get_salesperson_review_stats`, {
+          method: 'POST',
+          headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ p_salesperson_id: id }),
+        }).then(r => r.ok ? r.json() : null),
       ])
 
       if (publicResult.status === 'fulfilled' && publicResult.value) {
         setAgent(publicResult.value)
       }
-      if (statsResult.status === 'fulfilled' && statsResult.value.data) {
-        setReviewStats(statsResult.value.data)
+      if (statsResult.status === 'fulfilled' && statsResult.value) {
+        setReviewStats(statsResult.value)
       }
 
       // Step2: 認証チェック（公開データ表示後に非同期で実行）
