@@ -15,15 +15,19 @@ export default function Header({ backButton = false }: { backButton?: boolean })
   const pathname = usePathname()
 
   useEffect(() => {
+    console.log('[Header] effect start')
     const supabase = createClient()
     let active = true
     let detectionId = 0
 
     const detectFromSession = async (session: Session | null) => {
       const currentId = ++detectionId
+      console.log('[Header] detect start', { currentId, detectionId, session: !!session })
 
       const updateUserType = (nextType: UserType) => {
+        console.log('[Header] update attempt', { type: nextType, active, currentId, detectionId })
         if (!active || currentId !== detectionId) return
+        console.log('[Header] setUserType', nextType)
         setUserType(nextType)
       }
 
@@ -68,10 +72,12 @@ export default function Header({ backButton = false }: { backButton?: boolean })
 
     void initialize()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[Header] auth event', event, !!session)
       void detectFromSession(session)
     })
     return () => {
+      console.log('[Header] cleanup')
       active = false
       detectionId += 1
       subscription.unsubscribe()
