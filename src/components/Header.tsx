@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
+import type { Session } from '@supabase/supabase-js'
 
 const ADMIN_EMAILS = ['reimagining.home.lab@gmail.com', '1989yo55@gmail.com']
 
@@ -15,33 +16,74 @@ export default function Header({ backButton = false }: { backButton?: boolean })
 
   useEffect(() => {
     const supabase = createClient()
+    let active = true
+    let detectionId = 0
 
-    const detect = async () => {
-      // getSession()はローカルキャッシュを読むだけでネットワーク不要
-      // getUser()と違いトークンリフレッシュを起動しないためハングしない
-      const { data: { session } } = await supabase.auth.getSession()
+    const detectFromSession = async (session: Session | null) => {
+      const currentId = ++detectionId
+
+      const updateUserType = (nextType: UserType) => {
+        if (!active || currentId !== detectionId) return
+        setUserType(nextType)
+      }
+
       const user = session?.user ?? null
-      if (!user) { setUserType('anon'); return }
-      if (ADMIN_EMAILS.includes(user.email ?? '')) { setUserType('admin'); return }
-      const { data: sp } = await supabase
-        .from('salesperson_profiles')
-        .select('id')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      setUserType(sp ? 'salesperson' : 'buyer')
+      if (!user) { updateUserType('anon'); return }
+      if (ADMIN_EMAILS.includes(user.email ?? '')) { updateUserType('admin'); return }
+
+      try {
+        const result = await Promise.race([
+          supabase
+            .from('salesperson_profiles')
+            .select('id')
+            .eq('user_id', user.id)
+            .maybeSingle(),
+          new Promise<never>((_, reject) => {
+            window.setTimeout(() => {
+              reject(new Error('salesperson profile lookup timed out'))
+            }, 5000)
+          }),
+        ])
+
+        if (result.error) {
+          throw result.error
+        }
+        updateUserType(result.data ? 'salesperson' : 'buyer')
+      } catch (error) {
+        console.error('Failed to detect user type:', error)
+        updateUserType('anon')
+      }
     }
 
-    detect()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => detect())
-    return () => subscription.unsubscribe()
+    const initialize = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (error) throw error
+        await detectFromSession(session)
+      } catch (error) {
+        console.error('Failed to get session:', error)
+        if (active) setUserType('anon')
+      }
+    }
+
+    void initialize()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      void detectFromSession(session)
+    })
+    return () => {
+      active = false
+      detectionId += 1
+      subscription.unsubscribe()
+    }
   }, [])
 
   const handleSignOut = async () => {
     try {
-      // scope:'local' はサーバーへのリクエストなしにローカルセッションのみ削除する
-      // トークンリフレッシュ中でもハングしない
       await createClient().auth.signOut({ scope: 'local' })
-    } catch {}
+    } catch (error) {
+      console.error('Sign out failed:', error)
+    }
     window.location.href = '/'
   }
 
@@ -63,7 +105,6 @@ export default function Header({ backButton = false }: { backButton?: boolean })
                 <span className="text-xs text-gray-400 hidden lg:block">住宅営業を探す</span>
               </Link>
             </div>
-            {/* 施主・未ログインのみ検索ナビを表示 */}
             {(userType === 'anon' || userType === 'buyer') && (
               <nav className="flex items-center gap-0.5">
                 <Link href="/search" className="text-sm text-gray-600 hover:text-teal-600 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition">
@@ -88,7 +129,6 @@ export default function Header({ backButton = false }: { backButton?: boolean })
                 </Link>
               )
             )}
-
             {userType === 'admin' && (
               <>
                 <Link href="/admin" className="text-xs text-orange-500 hover:text-orange-400 font-medium transition">管理画面</Link>
@@ -119,7 +159,6 @@ export default function Header({ backButton = false }: { backButton?: boolean })
 
         {/* モバイル */}
         <div className="md:hidden">
-          {/* 1行目: ロゴ + 右端アクション */}
           <div className="flex items-center justify-between h-12">
             <div className="flex items-center gap-2">
               {backButton && (
@@ -153,11 +192,10 @@ export default function Header({ backButton = false }: { backButton?: boolean })
                 </Link>
               )}
               {userType === null && (
-                <button onClick={handleSignOut} className="text-xs text-gray-400">ログアウト</button>
+                <span className="w-16 h-5 bg-stone-100 rounded animate-pulse inline-block" />
               )}
             </div>
           </div>
-          {/* 2行目: ナビ（施主・未ログインのみ） */}
           {(userType === 'anon' || userType === 'buyer') && (
             <div className="flex items-center gap-0 pb-2 -mx-1 overflow-x-auto">
               <Link href="/search" className="text-xs text-gray-600 whitespace-nowrap px-3 py-1 rounded-lg hover:bg-stone-100 transition">
