@@ -516,15 +516,16 @@ function SearchContent() {
           .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
         if (ownProfile) { router.replace('/salesperson/dashboard'); return }
 
-        const [{ data: unlocked }, { data: myReviews }, { data: myOffers }] = await Promise.all([
-          supabase.from('salesperson_profiles').select('id, real_name, family_name, given_name'),
+        const [{ data: unlocked, error: unlockedError }, { data: myReviews }, { data: myOffers }] = await Promise.all([
+          supabase.rpc('get_my_unlocked_salesperson_profiles'),
           supabase.from('anonymous_reviews').select('salesperson_id').eq('user_id', user.id).neq('status', 'superseded'),
           supabase.from('offers').select('salesperson_id').eq('buyer_id', user.id),
         ])
         if (cancelled) return
+        if (unlockedError) console.error('[search] get_my_unlocked_salesperson_profiles error:', unlockedError)
         if (unlocked) {
           const map: Record<string, any> = {}
-          unlocked.forEach((u) => { map[u.id] = u })
+          unlocked.forEach((u: any) => { map[u.id] = u })
           setUnlockedMap(map)
         }
         const reviewedIds = new Set((myReviews ?? []).map((r: any) => r.salesperson_id as string))

@@ -118,19 +118,38 @@ export default function StyleMapPage() {
         .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
       if (ownProfile) { router.replace('/salesperson/dashboard'); return }
 
-      const { data: profiles } = await supabase
-        .from('salesperson_profiles')
-        .select('id, real_name, family_name, given_name, company_name, department, specialty_tags, sales_styles, is_verified')
-        .not('sales_styles', 'eq', '{}')
-        .order('company_name')
-
-      const { data: favs } = await supabase
-        .from('favorites').select('salesperson_id').eq('user_id', user.id)
+      // Step1: 開示済みプロフィール（名前・有料列）とお気に入りを並行取得
+      const [{ data: unlockedArr, error: unlockedError }, { data: favs }] = await Promise.all([
+        supabase.rpc('get_my_unlocked_salesperson_profiles'),
+        supabase.from('favorites').select('salesperson_id').eq('user_id', user.id),
+      ])
+      if (unlockedError) console.error('[map] get_my_unlocked_salesperson_profiles error:', unlockedError)
+      const unlocked = unlockedArr ?? []
+      const unlockedIds = unlocked.map((u: any) => u.id as string)
       const favSet = new Set((favs ?? []).map((f: any) => f.salesperson_id))
 
-      const plots: AgentPlot[] = ((profiles ?? []) as any[])
-        .filter((a) => a.sales_styles?.listening_proposing)
-        .map((a, i) => {
+      // Step2: 開示済みIDの公開情報（XY配置用のsales_styles等）を取得
+      let publicProfiles: any[] = []
+      if (unlockedIds.length > 0) {
+        const { data: pubData } = await supabase
+          .from('safe_salesperson_profiles')
+          .select('id, company_name, department, sales_styles, is_verified')
+          .in('id', unlockedIds)
+          .not('sales_styles', 'eq', '{}')
+          .order('company_name')
+        publicProfiles = pubData ?? []
+      }
+
+      // Step3: 公開情報と有料名前情報（RPC結果）をマージ
+      const unlockedByIdMap = Object.fromEntries(unlocked.map((u: any) => [u.id, u]))
+      const profiles = publicProfiles.map((p: any) => ({
+        ...p,
+        ...(unlockedByIdMap[p.id] ?? {}),
+      }))
+
+      const plots: AgentPlot[] = profiles
+        .filter((a: any) => a.sales_styles?.listening_proposing)
+        .map((a: any, i: number) => {
           const ss = a.sales_styles as Record<string, number>
           const lp = ss.listening_proposing ?? 3
           const nf = ss.numbers_feeling ?? 3

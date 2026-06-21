@@ -113,11 +113,10 @@ function SalespersonDetailContent() {
           return
         }
 
-        const { data: full } = await supabase
-          .from('salesperson_profiles')
-          .select('real_name, family_name, given_name, bio, contract_count')
-          .eq('id', id)
-          .single()
+        const { data: fullArr, error: fullError } = await supabase
+          .rpc('get_unlocked_salesperson_profile', { p_agent_id: id as string })
+        if (fullError) console.error('[salesperson detail] get_unlocked_salesperson_profile error:', fullError)
+        const full = (fullArr && fullArr.length > 0) ? fullArr[0] : null
 
         if (!full && searchParams.get('autoUnlock') === '1') {
           setShowConfirmModal(true)
