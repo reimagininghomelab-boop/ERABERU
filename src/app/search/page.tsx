@@ -648,13 +648,6 @@ function SearchContent() {
 
   if (loading) return (
     <div className="min-h-screen bg-stone-50">
-      {/* 【診断用: 確認後削除】loading=true時も表示 */}
-      <div style={{ position: 'fixed', top: 0, left: 0, zIndex: 99999, background: '#ff0', color: '#000', padding: '8px', fontSize: '12px', border: '2px solid red' }}>
-        STATE: loading=true<br />
-        loadError: {String(loadError)}<br />
-        agents: {agents.length}<br />
-        selectedId: {selectedId ?? 'null'}
-      </div>
       <Header />
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-4">
         <div className="h-7 w-40 bg-stone-200 rounded-lg animate-pulse mb-6" />
@@ -687,17 +680,6 @@ function SearchContent() {
 
   return (
     <main className="min-h-screen bg-stone-50">
-      {/* 【診断用: 確認後削除】 */}
-      <div style={{ position: 'fixed', top: 0, left: 0, zIndex: 99999, background: '#fff', color: '#000', padding: '8px', fontSize: '12px', border: '2px solid red', maxWidth: 320 }}>
-        render: ok<br />
-        loading: {String(loading)}<br />
-        loadError: {String(loadError)}<br />
-        agents: {agents.length}<br />
-        filtered: {filteredAgents.length}<br />
-        selectedId: {selectedId ?? 'null'}<br />
-        selectedAgent: {selectedAgent ? 'yes' : 'no'}
-      </div>
-
       <Header />
 
       {/* ページタイトル */}
