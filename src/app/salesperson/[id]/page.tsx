@@ -787,6 +787,13 @@ function SalespersonDetailContent() {
             </button>
           ) : (
             <div className="space-y-4">
+              {!agent.is_verified && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    ⚠️ この営業担当者は、会社指定ドメインによる所属確認が完了していません。表示されている所属会社・在籍状況については、打ち合わせ前にご自身でもご確認ください。
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="text-xs text-gray-500 font-medium mb-1 block">検討エリア（任意）</label>
                 <input

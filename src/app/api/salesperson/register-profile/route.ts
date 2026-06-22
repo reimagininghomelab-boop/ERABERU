@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
     sales_styles: salesStyles,
     bio: (typeof bio === 'string' ? bio.trim() : null) || null,
     specialties: specialtiesList,
-    status: isAutoApproved ? 'active' : 'pending',
+    status: 'active',
     is_verified: isAutoApproved,
   }
 
@@ -173,5 +173,5 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ registrationResult: isAutoApproved ? 'active' : 'pending' })
+  return NextResponse.json({ registrationResult: 'active', isVerified: isAutoApproved })
 }

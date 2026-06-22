@@ -50,7 +50,8 @@ export default function SalespersonRegisterPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [step, setStep] = useState<1 | 2 | 'email_sent'>(1)
   const [initializing, setInitializing] = useState(true)
-  const [registrationResult, setRegistrationResult] = useState<'active' | 'pending' | null>(null)
+  const [registrationResult, setRegistrationResult] = useState<'active' | null>(null)
+  const [registrationIsVerified, setRegistrationIsVerified] = useState(false)
 
   // Step 1
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
@@ -255,7 +256,7 @@ export default function SalespersonRegisterPage() {
         }),
       })
 
-      const data = await res.json() as { registrationResult?: 'active' | 'pending'; error?: string }
+      const data = await res.json() as { registrationResult?: string; isVerified?: boolean; error?: string }
 
       if (!res.ok) {
         setStep2Error(data.error ?? '登録に失敗しました')
@@ -263,7 +264,8 @@ export default function SalespersonRegisterPage() {
         return
       }
 
-      setRegistrationResult(data.registrationResult ?? 'pending')
+      setRegistrationResult('active')
+      setRegistrationIsVerified(data.isVerified ?? false)
       setDone(true)
     } catch {
       setStep2Error('通信に失敗しました。時間をおいて再度お試しください。')
@@ -280,12 +282,12 @@ export default function SalespersonRegisterPage() {
         <Header />
         <div className="max-w-xl mx-auto px-6 py-16 text-center">
           <div className="bg-white rounded-2xl shadow-sm p-10">
-            {registrationResult === 'active' ? (
+            {registrationIsVerified ? (
               <>
                 <div className="text-4xl mb-4">✅</div>
                 <h2 className="text-xl font-bold text-stone-800 mb-3">登録が完了しました</h2>
                 <p className="text-stone-500 text-sm leading-relaxed mb-6">
-                  会社メールアドレスの確認が取れたため、営業プロフィールを公開しました。<br />
+                  会社メールアドレスのドメインが確認できたため、「会社ドメイン一致」として公開されました。<br />
                   ダッシュボードから掲載状況や口コミを確認できます。
                 </p>
                 <Link href="/salesperson/dashboard" className="inline-block bg-orange-500 hover:bg-orange-600 text-white font-bold px-6 py-3 rounded-xl transition text-sm">
@@ -294,14 +296,15 @@ export default function SalespersonRegisterPage() {
               </>
             ) : (
               <>
-                <div className="text-4xl mb-4">📋</div>
-                <h2 className="text-xl font-bold text-stone-800 mb-3">申請を受け付けました</h2>
+                <div className="text-4xl mb-4">✅</div>
+                <h2 className="text-xl font-bold text-stone-800 mb-3">登録が完了しました</h2>
                 <p className="text-stone-500 text-sm leading-relaxed mb-6">
-                  所属会社またはメールアドレスの確認が取れるまで、プロフィールは非公開となります。<br />
-                  確認が完了次第、公開のご連絡をいたします。
+                  プロフィールは公開されました。<br />
+                  登録メールと会社ドメインが一致しないため、現在「所属会社未確認」と表示されます。<br />
+                  ダッシュボードから掲載状況を確認できます。
                 </p>
-                <Link href="/" className="inline-block bg-stone-400 hover:bg-stone-500 text-white font-bold px-6 py-3 rounded-xl transition text-sm">
-                  トップページへ
+                <Link href="/salesperson/dashboard" className="inline-block bg-orange-500 hover:bg-orange-600 text-white font-bold px-6 py-3 rounded-xl transition text-sm">
+                  ダッシュボードへ
                 </Link>
               </>
             )}
