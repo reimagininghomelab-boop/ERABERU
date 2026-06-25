@@ -39,7 +39,6 @@ function SalespersonDetailContent() {
   const [offerTiming, setOfferTiming] = useState('')
   const [offerMessage, setOfferMessage] = useState('')
   const [offerName, setOfferName] = useState('')
-  const [offerEmail, setOfferEmail] = useState('')
   const [offerSending, setOfferSending] = useState(false)
   const [offerDone, setOfferDone] = useState(false)
   const [offerError, setOfferError] = useState('')
@@ -215,7 +214,7 @@ function SalespersonDetailContent() {
   }
 
   const handleOfferSubmit = async () => {
-    if (!offerMessage.trim() || !offerName.trim() || !offerEmail.trim()) return
+    if (!offerMessage.trim() || !offerName.trim()) return
     setOfferSending(true)
     setOfferError('')
     try {
@@ -228,7 +227,6 @@ function SalespersonDetailContent() {
           timing: offerTiming || null,
           message: offerMessage.trim(),
           contact_name: offerName.trim(),
-          contact_email: offerEmail.trim(),
         }),
       })
       if (!res.ok) { const j = await res.json(); throw new Error(j.error ?? '送信失敗') }
@@ -815,13 +813,15 @@ function SalespersonDetailContent() {
                 </div>
               </div>
               <div>
-                <label className="text-xs text-gray-500 font-medium mb-1 block">
-                  相談内容 <span className="text-red-400">*</span>
-                </label>
+                <div className="flex justify-between items-baseline mb-1">
+                  <label className="text-xs text-gray-500 font-medium">相談内容 <span className="text-red-400">*</span></label>
+                  <span className="text-xs text-gray-400">{offerMessage.length}/50文字</span>
+                </div>
                 <textarea
                   value={offerMessage} onChange={(e) => setOfferMessage(e.target.value)}
                   placeholder="家づくりの希望、不安なこと、相談したいことを自由に書いてください"
                   rows={4}
+                  maxLength={50}
                   className="w-full text-sm text-gray-800 bg-white border border-stone-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-teal-200 placeholder:text-gray-400"
                 />
               </div>
@@ -832,19 +832,12 @@ function SalespersonDetailContent() {
                 <input
                   type="text" value={offerName} onChange={(e) => setOfferName(e.target.value)}
                   placeholder="山田 太郎"
+                  maxLength={50}
                   className="w-full text-sm text-gray-800 bg-white border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 placeholder:text-gray-400"
                 />
               </div>
-              <div>
-                <label className="text-xs text-gray-500 font-medium mb-1 block">
-                  連絡先メールアドレス <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="email" value={offerEmail} onChange={(e) => setOfferEmail(e.target.value)}
-                  placeholder="example@mail.com"
-                  className="w-full text-sm text-gray-800 bg-white border border-stone-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-teal-200 placeholder:text-gray-400"
-                />
-                <p className="text-xs text-gray-400 mt-1">担当者への連絡先として使用します。電話番号は不要です。</p>
+              <div className="bg-stone-50 border border-stone-200 rounded-xl px-4 py-3">
+                <p className="text-xs text-gray-500">連絡先にはログイン中の認証済みメールアドレスが使用されます。</p>
               </div>
               {offerError && <p className="text-sm text-red-500">{offerError}</p>}
               <div className="flex gap-3">
@@ -857,7 +850,7 @@ function SalespersonDetailContent() {
                 <button
                   type="button"
                   onClick={handleOfferSubmit}
-                  disabled={offerSending || !offerMessage.trim() || !offerName.trim() || !offerEmail.trim()}
+                  disabled={offerSending || !offerMessage.trim() || !offerName.trim()}
                   className="flex-1 bg-teal-500 hover:bg-teal-400 disabled:bg-gray-200 disabled:text-gray-400 text-white font-bold py-3 rounded-xl text-sm transition"
                 >
                   {offerSending ? '送信中...' : '相談リクエストを送る'}

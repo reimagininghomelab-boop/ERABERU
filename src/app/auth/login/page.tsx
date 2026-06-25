@@ -1,9 +1,24 @@
-'use client'
+﻿'use client'
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 
+function isSafeRedirect(url: string): boolean {
+  if (!url) return false
+  if (!url.startsWith('/')) return false
+  if (url.startsWith('//')) return false
+  if (url.startsWith('/\\')) return false
+  try {
+    const decoded = decodeURIComponent(url)
+    if (!decoded.startsWith('/')) return false
+    if (decoded.startsWith('//')) return false
+    if (decoded.startsWith('/\\')) return false
+  } catch {
+    return false
+  }
+  return true
+}
 function toJapanese(msg: string): string {
   if (msg.includes('Invalid login credentials')) return 'メールアドレスまたはパスワードが正しくありません。'
   if (msg.includes('Email not confirmed')) return 'メールアドレスが確認されていません。登録時のメールをご確認ください。'
@@ -34,7 +49,7 @@ function LoginContent() {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) return
       const redirectParam = searchParams.get('redirect')
-      if (redirectParam) { window.location.href = redirectParam; return }
+      if (redirectParam && isSafeRedirect(redirectParam)) { window.location.href = redirectParam; return }
       const { data: sp } = await supabase
         .from('salesperson_profiles').select('id').eq('user_id', user.id).maybeSingle()
       window.location.href = sp ? '/salesperson/dashboard' : '/search'
@@ -78,7 +93,7 @@ function LoginContent() {
           // セッション確立後にアカウント種別を判定して直接リダイレクト（race condition 回避）
           const user = signInData.user
           const redirectParam = searchParams.get('redirect')
-          if (redirectParam) {
+          if (redirectParam && isSafeRedirect(redirectParam)) {
             window.location.href = redirectParam
             return
           } else if (user) {
