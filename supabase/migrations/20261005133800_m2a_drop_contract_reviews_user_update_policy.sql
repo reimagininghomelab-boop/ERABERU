@@ -1,0 +1,58 @@
+-- M2-A: contract_reviews の投稿者UPDATEポリシーを削除する
+--
+-- 目的:
+--   一般ユーザー（投稿者本人）による public.contract_reviews の UPDATE を封鎖する。
+--   RLS ポリシー "users can update own reviews" (USING / WITH CHECK: user_id = auth.uid())
+--   により、投稿者が自分の行を更新できる。authenticated には全列 UPDATE の GRANT があり、
+--   列を制限する trigger も無いため、is_approved / first_approved_at / salesperson_id /
+--   user_id といった本来モデレーション側の列まで書き換えられる
+--   （自己承認・口コミの付け替え・承認履歴の改竄が成立する）。
+--
+--   contract_reviews は実質レガシーで、新規投稿は anonymous_reviews 系へ移行済み。
+--   コードベース全体を検索しても、このテーブルへの INSERT / DELETE / upsert の呼び出し元は
+--   存在せず、書き込みは管理画面の承認/非承認 UPDATE
+--   (src/app/admin/page.tsx:121, 147) のみ。
+--
+-- 管理者用 UPDATE ポリシーは残す:
+--   "admin can update any review"
+--     PERMISSIVE / roles: authenticated
+--     USING      : auth.email() = ANY (ARRAY['reimagining.home.lab@gmail.com', '1989yo55@gmail.com'])
+--     WITH CHECK : 同じ管理者メール条件
+--   このポリシーには一切触れないため、管理画面の承認/非承認は従来どおり動作する。
+--
+-- 触れないもの:
+--   GRANT / REVOKE、INSERT ポリシー、DELETE ポリシー、SELECT ポリシー、
+--   管理者 UPDATE ポリシー、テーブル定義、trigger、function。
+--   PostgreSQL の RLS は GRANT とは独立した追加フィルタのため、authenticated の
+--   UPDATE GRANT を残したままでも、一般ユーザーに一致する PERMISSIVE ポリシーが
+--   無くなることで UPDATE は 0 行更新になる。
+--
+-- 適用前の本番調査結果（確認済み）:
+--   public.contract_reviews の UPDATE ポリシーは次の 2 件のみで、FOR ALL ポリシーは存在しない。
+--     1. "admin can update any review"    PERMISSIVE / authenticated / 管理者メール判定
+--     2. "users can update own reviews"   PERMISSIVE / authenticated / user_id = auth.uid()
+--   よって本 DROP 後、一般ユーザーに成立する UPDATE ポリシーは残らない。
+
+DROP POLICY IF EXISTS "users can update own reviews" ON public.contract_reviews;
+
+-- 適用後の確認クエリ（手動）:
+--   SELECT polname, polcmd, polpermissive,
+--          pg_get_expr(polqual, polrelid)      AS using_expr,
+--          pg_get_expr(polwithcheck, polrelid) AS with_check_expr
+--   FROM pg_policy
+--   WHERE polrelid = 'public.contract_reviews'::regclass
+--   ORDER BY polcmd, polname;
+--   → UPDATE ポリシーが "admin can update any review" の 1 件だけになっていること
+--
+-- 適用後テスト:
+--   - 一般ユーザー JWT で自分の行を is_approved = true に UPDATE → 0 行更新
+--   - 同ユーザーで salesperson_id / user_id / content を UPDATE → 0 行更新
+--   - 管理者で承認 → 成功し first_approved_at が付与される
+--   - 管理者で非承認 → 成功する
+--   - 営業詳細ページの承認済みレビュー表示が変わらない
+--
+-- ロールバック（必要な場合のみ手動実行）:
+--   CREATE POLICY "users can update own reviews" ON public.contract_reviews
+--     AS PERMISSIVE FOR UPDATE TO authenticated
+--     USING (user_id = auth.uid())
+--     WITH CHECK (user_id = auth.uid());
