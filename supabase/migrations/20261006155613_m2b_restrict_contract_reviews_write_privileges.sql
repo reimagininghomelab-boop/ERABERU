@@ -1,0 +1,106 @@
+-- M2-B: contract_reviews の未使用な書き込み権限を剥奪する
+--
+-- 目的:
+--   public.contract_reviews に残っている「呼び出し元が存在しない書き込み権限」を剥奪し、
+--   M2-A で塞いだ UPDATE 経路と同様に INSERT / DELETE 経路も封鎖する。
+--
+--   M2-A では RLS ポリシー "users can update own reviews" を DROP して投稿者 UPDATE を
+--   封鎖したが、INSERT 側には同等の穴が残っていた:
+--     RLS ポリシー "authenticated users can insert reviews"
+--       TO authenticated / WITH CHECK (user_id = auth.uid())
+--     authenticated には全列 INSERT の GRANT があり、列を制限する制約も無いため、
+--     ログインしただけの任意ユーザーが INSERT 時に
+--       - is_approved = true          → モデレーションを完全にバイパスして即時公開
+--       - salesperson_id = 任意の営業  → 任意の営業への口コミ付け替え／投下
+--       - first_approved_at = 任意値   → AI 紹介文の自動再生成条件（first_approved_at IS NOT NULL
+--                                        のカウント）の汚染
+--     を直接指定できる。M2-A は UPDATE 経路のみを塞いだため、同じ攻撃が INSERT 経路で
+--     成立したままになっていた。
+--
+--   anon については INSERT / UPDATE / DELETE の GRANT があるが、anon に一致する
+--   INSERT / UPDATE / DELETE ポリシーは 1 件も無いため RLS 上は既に全拒否。
+--   本 REVOKE は多層防御（将来ポリシーが追加された際の事故防止）が目的。
+--
+-- 適用前の本番調査結果（確認済み）:
+--   RLS            : enabled
+--   INSERT ポリシー: "authenticated users can insert reviews"
+--                      TO authenticated / WITH CHECK (user_id = auth.uid())  … 本 migration で DROP
+--   UPDATE ポリシー: "admin can update any review"
+--                      TO authenticated / USING・WITH CHECK ともに管理者メール判定
+--                      (reimagining.home.lab@gmail.com, 1989yo55@gmail.com)  … 変更しない
+--   DELETE ポリシー: 存在しない
+--   trigger        : on_contract_review_posted (AFTER INSERT) → public.promote_to_building()
+--                    SECURITY DEFINER。profiles.status を prospective → building に UPDATE する
+--                    だけで、contract_reviews 自体への INSERT / UPDATE は行わない。
+--                    現行コードに contract_reviews への INSERT 経路が無いため今回は変更しない。
+--
+-- 現行コードの書き込み経路（全件調査済み）:
+--   INSERT / upsert : 0 件（旧クライアント直 upsert はコミット fb11e6d で削除済み）
+--   DELETE          : 0 件
+--   UPDATE          : 管理画面の承認/非承認のみ
+--                     src/app/admin/page.tsx:121 (is_approved, first_approved_at)
+--                     src/app/admin/page.tsx:147 (is_approved)
+--                     管理者ブラウザの authenticated セッションからの direct UPDATE。
+--   service_role 経由の書き込み: 0 件
+--
+-- authenticated の UPDATE 権限を本 migration で変更しない理由:
+--   上記のとおり管理画面が authenticated の direct UPDATE に依存しているため。
+--   P0 では管理画面を壊さない最小変更に留める。
+--   管理操作の RPC 化と UPDATE 権限のさらなる列単位縮小は P1 で行う。
+--
+-- 触れないもの:
+--   authenticated の UPDATE 権限、管理者 UPDATE ポリシー "admin can update any review"、
+--   SELECT 権限と SELECT ポリシー、REFERENCES / TRIGGER / TRUNCATE 権限、
+--   service_role の全権限、テーブル定義、
+--   trigger on_contract_review_posted と function public.promote_to_building()。
+
+-- 1. anon: 呼び出し元もポリシーも存在しない書き込み権限を剥奪
+REVOKE INSERT, UPDATE, DELETE ON public.contract_reviews FROM anon;
+
+-- 2. authenticated: 呼び出し元が存在しない INSERT / DELETE を剥奪（UPDATE は残す）
+REVOKE INSERT, DELETE ON public.contract_reviews FROM authenticated;
+
+-- 3. 旧 INSERT ポリシーを削除（GRANT 剥奪との二重化。将来 GRANT が戻っても穴が再発しない）
+DROP POLICY IF EXISTS "authenticated users can insert reviews" ON public.contract_reviews;
+
+-- 適用後の確認クエリ（手動）:
+--   -- テーブル権限（本 migration が剥奪した書き込み権限が消えていることだけを確認する）
+--   SELECT grantee, privilege_type
+--   FROM information_schema.role_table_grants
+--   WHERE table_schema = 'public' AND table_name = 'contract_reviews'
+--     AND grantee IN ('anon', 'authenticated')
+--     AND privilege_type IN ('INSERT', 'UPDATE', 'DELETE')
+--   ORDER BY grantee, privilege_type;
+--   期待される結果（上記クエリが返す行はこの 1 行のみ）:
+--     → anon          : INSERT なし / UPDATE なし / DELETE なし（0 行）
+--     → authenticated : INSERT なし / DELETE なし、UPDATE は維持されたまま 1 行残る
+--
+--   SELECT / REFERENCES / TRIGGER / TRUNCATE は M2-B では変更しない。
+--   本番 DB では anon / authenticated にこれらも GRANT されているが、本 migration は
+--   INSERT / UPDATE / DELETE のみを REVOKE しているため、適用後も従来どおり残る。
+--   service_role の権限も M2-B では変更なし。
+--
+--   -- ポリシー
+--   SELECT polname, polcmd, polpermissive,
+--          pg_get_expr(polqual, polrelid)      AS using_expr,
+--          pg_get_expr(polwithcheck, polrelid) AS with_check_expr
+--   FROM pg_policy
+--   WHERE polrelid = 'public.contract_reviews'::regclass
+--   ORDER BY polcmd, polname;
+--   → INSERT ポリシーが 0 件、UPDATE ポリシーが "admin can update any review" の 1 件のみ
+--
+-- 適用後テスト:
+--   - 一般ユーザー JWT で INSERT（is_approved = true を含む）→ 権限エラー
+--   - 一般ユーザー JWT で DELETE → 権限エラー
+--   - 未ログイン（anon）で INSERT / UPDATE / DELETE → 権限エラー
+--   - 管理者で承認 → 成功し first_approved_at が付与され、AI 紹介文の自動再生成が発火する
+--   - 管理者で非承認 → 成功する
+--   - 営業詳細ページの承認済みレビュー表示が変わらない（SELECT は不変）
+--   - 管理画面の一覧表示が変わらない（SELECT は不変）
+--
+-- ロールバック（必要な場合のみ手動実行）:
+--   GRANT INSERT, UPDATE, DELETE ON public.contract_reviews TO anon;
+--   GRANT INSERT, DELETE ON public.contract_reviews TO authenticated;
+--   CREATE POLICY "authenticated users can insert reviews" ON public.contract_reviews
+--     AS PERMISSIVE FOR INSERT TO authenticated
+--     WITH CHECK (user_id = auth.uid());
