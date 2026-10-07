@@ -101,9 +101,10 @@ export default function TopPage() {
       {/* ヒーロー */}
       <section className="px-6 py-16 md:py-24">
         <div className="max-w-xl mx-auto text-center">
-          <h1 className="text-[26px] md:text-[28px] font-bold leading-snug mb-5">
-            住宅会社は選んだ。<br />
-            担当者は？ <span className="text-[#488a99]">ERABERU。</span>
+          <h1 className="text-[22px] min-[375px]:text-[26px] md:text-[28px] font-bold leading-snug mb-5">
+            一生に一度の家づくり。<br />
+            後悔のない家づくりは、<br />
+            営業選びから始まります。
           </h1>
           <p className="text-[13px] text-[#7a8385] leading-relaxed mb-9">
             同じ会社でも、担当者が変わると<br />
