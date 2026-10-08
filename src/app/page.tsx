@@ -102,7 +102,6 @@ export default function TopPage() {
       <section className="px-6 py-16 md:py-24">
         <div className="max-w-xl mx-auto text-center">
           <h1 className="text-[22px] min-[375px]:text-[26px] md:text-[28px] font-bold leading-snug mb-5">
-            一生に一度の家づくり。<br />
             後悔のない家づくりは、<br />
             営業選びから始まります。
           </h1>
