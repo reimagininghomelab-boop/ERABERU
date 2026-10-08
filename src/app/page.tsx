@@ -126,7 +126,7 @@ export default function TopPage() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-10">
             <h2 className="text-[17px] font-bold mb-2">
-              比較はする。<span className="text-[#488a99]">追客はさせない。</span>
+              気になる営業を、<span className="text-[#488a99]">自由に比較。</span>
             </h2>
             <p className="text-[12px] text-[#7a8385]">
               家族の家づくりは、家族のペースで。
@@ -134,9 +134,9 @@ export default function TopPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
             {[
-              { icon: <ChatIcon />, title: '口コミで比較', desc: '経験者の声で評判を確認' },
+              { icon: <ChatIcon />, title: '口コミで知る', desc: '経験者の声で評判を確認' },
               { icon: <TargetIcon />, title: '相性で探す', desc: '自分に合うタイプで絞る' },
-              { icon: <LockIcon />, title: '施主からオファー', desc: '気に入った人にだけ連絡' },
+              { icon: <LockIcon />, title: '匿名で比較', desc: '勝手に担当は決まりません' },
             ].map((item) => (
               <div key={item.title} className="bg-white rounded-xl p-7 text-center">
                 <span className="flex justify-center mb-4">{item.icon}</span>
