@@ -101,9 +101,9 @@ export default function TopPage() {
       {/* ヒーロー */}
       <section className="px-6 py-16 md:py-24">
         <div className="max-w-xl mx-auto text-center">
-          <h1 className="text-[22px] min-[375px]:text-[26px] md:text-[28px] font-bold leading-snug mb-5">
+          <h1 className="text-[20px] min-[375px]:text-[24px] min-[390px]:text-[26px] md:text-[28px] font-bold leading-snug mb-5">
             後悔のない家づくりは、<br />
-            営業選びから始まります。
+            担当者選びから始まります。
           </h1>
           <p className="text-[13px] text-[#7a8385] leading-relaxed mb-9">
             同じ会社でも、担当者が変わると<br />
@@ -126,7 +126,7 @@ export default function TopPage() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-10">
             <h2 className="text-[17px] font-bold mb-2">
-              気になる営業を、<span className="text-[#488a99]">自由に比較。</span>
+              気になる担当者を、<span className="text-[#488a99]">自由に比較。</span>
             </h2>
             <p className="text-[12px] text-[#7a8385]">
               家族の家づくりは、家族のペースで。

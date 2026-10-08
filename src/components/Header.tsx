@@ -122,7 +122,7 @@ export default function Header({ backButton = false }: { backButton?: boolean })
                 </Link>
               ) : (
                 <Link href="/for-salespeople" className="text-xs text-gray-400 hover:text-gray-600 transition hidden lg:block">
-                  営業マンとして登録
+                  営業担当者として登録
                 </Link>
               )
             )}

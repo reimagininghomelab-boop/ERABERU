@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "営業マンの通知表サイト〜ERABERU〜",
-  description: "誠実な住宅営業マンを探して指名できるマッチングサービス",
+  title: "ERABERU｜注文住宅の担当者選び",
+  description: "注文住宅の営業担当者を、口コミや提案スタイルから比較して、自分に合う担当者を探せるサービスです。",
 };
 
 export default function RootLayout({
