@@ -50,7 +50,7 @@ export default function SalespersonRegisterPage() {
   const [companies, setCompanies] = useState<Company[]>([])
   const [step, setStep] = useState<1 | 2 | 'email_sent'>(1)
   const [initializing, setInitializing] = useState(true)
-  const [registrationResult, setRegistrationResult] = useState<'active' | null>(null)
+  const [registrationResult, setRegistrationResult] = useState<string | null>(null)
   const [registrationIsVerified, setRegistrationIsVerified] = useState(false)
 
   // Step 1
@@ -264,7 +264,7 @@ export default function SalespersonRegisterPage() {
         return
       }
 
-      setRegistrationResult('active')
+      setRegistrationResult(data.registrationResult ?? null)
       setRegistrationIsVerified(data.isVerified ?? false)
       setDone(true)
     } catch {
@@ -282,7 +282,20 @@ export default function SalespersonRegisterPage() {
         <Header />
         <div className="max-w-xl mx-auto px-6 py-16 text-center">
           <div className="bg-white rounded-2xl shadow-sm p-10">
-            {registrationIsVerified ? (
+            {registrationResult !== 'active' ? (
+              <>
+                <div className="text-4xl mb-4">✅</div>
+                <h2 className="text-xl font-bold text-stone-800 mb-3">登録が完了しました</h2>
+                <p className="text-stone-500 text-sm leading-relaxed mb-6">
+                  現在、運営でプロフィール内容を確認しています。<br />
+                  確認が完了するとプロフィールが公開されます。<br />
+                  ダッシュボードから状況を確認できます。
+                </p>
+                <Link href="/salesperson/dashboard" className="inline-block bg-orange-500 hover:bg-orange-600 text-white font-bold px-6 py-3 rounded-xl transition text-sm">
+                  ダッシュボードへ
+                </Link>
+              </>
+            ) : registrationIsVerified ? (
               <>
                 <div className="text-4xl mb-4">✅</div>
                 <h2 className="text-xl font-bold text-stone-800 mb-3">登録が完了しました</h2>

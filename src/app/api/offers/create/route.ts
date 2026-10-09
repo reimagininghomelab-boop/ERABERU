@@ -4,8 +4,15 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const VALID_TIMINGS = ['3ヶ月以内', '半年以内', '1年以内', 'まだ未定'] as const
+// 【一時停止】営業検証期間中はオファー作成を受け付けない。再開時は false に戻す
+// 画面側（salesperson/[id]/page.tsx）でも同様に停止している
+const OFFERS_PAUSED = true
 
 export async function POST(request: NextRequest) {
+  if (OFFERS_PAUSED) {
+    return NextResponse.json({ error: '相談機能は現在準備中です' }, { status: 503 })
+  }
+
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

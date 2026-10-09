@@ -1,8 +1,21 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
 const OTHER_COMPANY_ID = '__other__'
+
+// salesperson_profiles への書き込み専用（サーバー内でのみ使用。キーをレスポンスに含めない）
+function getServiceClient() {
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!serviceKey) {
+    console.error('[register-profile] SUPABASE_SERVICE_ROLE_KEY is not set in environment')
+    return null
+  }
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey, {
+    auth: { persistSession: false },
+  })
+}
 
 const ALLOWED_SPECIALTIES = [
   '資金計画の相談', '住宅ローンの相談', '土地探しからの家づくり', '土地の注意点整理',
@@ -129,8 +142,14 @@ export async function POST(request: NextRequest) {
     companyName = applicationCompanyName
   }
 
-  // TODO: service role key への移行時に、本人の直接 UPDATE で status/is_verified を
-  // 変更できないよう RLS を絞ること（現状は anon key + RLS の範囲内で動作）
+  // 書き込みは service_role で行う。status / is_verified / user_id はリクエスト本文から受け取らず、
+  // サーバー側の判定値とログイン中の user.id だけを使う。
+  // TODO: authenticated から salesperson_profiles の INSERT と status/is_verified の UPDATE 権限を剥奪すること
+  const admin = getServiceClient()
+  if (!admin) {
+    return NextResponse.json({ error: 'サーバー設定エラーが発生しました' }, { status: 500 })
+  }
+
   const profileData = {
     real_name: `${familyName} ${givenName}`,
     family_name: familyName,
@@ -146,32 +165,44 @@ export async function POST(request: NextRequest) {
     sales_styles: salesStyles,
     bio: (typeof bio === 'string' ? bio.trim() : null) || null,
     specialties: specialtiesList,
-    status: 'active',
     is_verified: isAutoApproved,
   }
 
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await admin
     .from('salesperson_profiles')
-    .select('id')
+    .select('id, status')
     .eq('user_id', user.id)
     .maybeSingle()
+  if (existingError) {
+    console.error('[register-profile] existing profile lookup error', { code: existingError.code, message: existingError.message })
+    return NextResponse.json({ error: 'サーバーエラーが発生しました' }, { status: 500 })
+  }
 
+  let registrationResult: string
   if (existing?.id) {
-    const { error } = await supabase
+    // 既存プロフィールの再送信では status を変更しない（運営が pending にした営業が自分で active に戻せないようにする）
+    const { error } = await admin
       .from('salesperson_profiles')
       .update(profileData)
       .eq('id', existing.id)
+      .eq('user_id', user.id)
     if (error) {
-      return NextResponse.json({ error: '更新に失敗しました: ' + error.message }, { status: 500 })
+      console.error('[register-profile] update error', { code: error.code, message: error.message })
+      return NextResponse.json({ error: '更新に失敗しました' }, { status: 500 })
     }
+    registrationResult = existing.status as string
   } else {
-    const { error } = await supabase
+    // 新規登録: 会社ドメイン一致のみ即時公開、それ以外（不一致・ドメイン未登録・その他の会社）は運営確認待ち
+    const status = isAutoApproved ? 'active' : 'pending'
+    const { error } = await admin
       .from('salesperson_profiles')
-      .insert({ user_id: user.id, ...profileData })
+      .insert({ user_id: user.id, ...profileData, status })
     if (error) {
-      return NextResponse.json({ error: '登録に失敗しました: ' + error.message }, { status: 500 })
+      console.error('[register-profile] insert error', { code: error.code, message: error.message })
+      return NextResponse.json({ error: '登録に失敗しました' }, { status: 500 })
     }
+    registrationResult = status
   }
 
-  return NextResponse.json({ registrationResult: 'active', isVerified: isAutoApproved })
+  return NextResponse.json({ registrationResult, isVerified: isAutoApproved })
 }

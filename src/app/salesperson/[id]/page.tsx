@@ -13,6 +13,12 @@ const SALES_STYLE_AXES = [
   { key: 'numbers_feeling', left: '数字で説明', right: '感覚で説明' },
 ]
 const SUPABASE_FUNCTIONS_URL = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1`
+// 【一時停止】営業検証期間中はオファー（相談リクエスト）フォームを非表示にする。再開時は false に戻す
+// API 側（/api/offers/create）でも同様に停止している
+const OFFERS_PAUSED = true
+// 【一時停止】営業検証期間中はプロフィール開示（¥1,000決済）の購入導線を停止する。再開時は false に戻す
+// Edge Function（create-checkout-session）でも同様に停止している
+const UNLOCK_PAUSED = true
 
 function SalespersonDetailContent() {
   const { id } = useParams()
@@ -149,7 +155,7 @@ function SalespersonDetailContent() {
         const full = (fullArr && fullArr.length > 0) ? fullArr[0] : null
 
         if (!full && searchParams.get('autoUnlock') === '1') {
-          setShowConfirmModal(true)
+          if (!UNLOCK_PAUSED) setShowConfirmModal(true)
           if (typeof window !== 'undefined') {
             const url = new URL(window.location.href)
             url.searchParams.delete('autoUnlock')
@@ -233,6 +239,7 @@ function SalespersonDetailContent() {
   }
 
   const handleUnlockClick = () => {
+    if (UNLOCK_PAUSED) return
     if (!user) {
       router.push(`/auth/login?redirect=${encodeURIComponent(`/salesperson/${id}?autoUnlock=1`)}`)
       return
@@ -322,7 +329,7 @@ function SalespersonDetailContent() {
       <Header backButton />
 
       {/* 開示確認モーダル */}
-      {showConfirmModal && (
+      {showConfirmModal && !UNLOCK_PAUSED && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 overflow-y-auto py-8">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5 my-auto">
             <div>
@@ -822,6 +829,12 @@ function SalespersonDetailContent() {
                   ページを再読み込みする
                 </button>
               </div>
+            ) : UNLOCK_PAUSED ? (
+              <>
+            <p className="text-gray-800 font-bold text-base mb-1">詳細プロフィールの開示</p>
+            <p className="text-gray-500 text-sm mb-1">氏名・詳細プロフィール・公開中の口コミ全文は、有料開示（1,000円・税込）で閲覧できる仕組みを予定しています。</p>
+            <p className="text-gray-400 text-xs">プロフィール開示機能は現在準備中です。</p>
+              </>
             ) : (
               <>
             <p className="text-gray-800 font-bold text-base mb-1">この営業担当者への相談を始める</p>
@@ -841,8 +854,16 @@ function SalespersonDetailContent() {
           </div>
         )}
 
+        {/* オファー（相談）一時停止中の表示 */}
+        {unlockedData && OFFERS_PAUSED && (
+        <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
+          <p className="text-sm font-bold text-gray-800 mb-1">この営業担当者に相談する</p>
+          <p className="text-xs text-gray-500">相談機能は現在準備中です。</p>
+        </div>
+        )}
+
         {/* オファー（相談）フォーム：開示後のみ表示 */}
-        {unlockedData && (
+        {unlockedData && !OFFERS_PAUSED && (
         <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
           <p className="text-sm font-bold text-gray-800 mb-1">この営業担当者に相談する</p>
           <p className="text-xs text-gray-500 mb-4">検討エリア・時期・相談内容を送ると、担当者側に届きます。</p>

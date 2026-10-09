@@ -5,6 +5,10 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
   apiVersion: '2024-06-20',
 })
 
+// 【一時停止】営業検証期間中は Checkout Session を作成しない。再開時は false に戻して再デプロイする
+// 画面側（src/app/salesperson/[id]/page.tsx）でも同様に停止している
+const UNLOCK_PAUSED = true
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
@@ -12,6 +16,16 @@ Deno.serve(async (req) => {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'authorization, content-type',
       }
+    })
+  }
+
+  if (UNLOCK_PAUSED) {
+    return new Response(JSON.stringify({ error: 'プロフィール開示機能は現在準備中です' }), {
+      status: 503,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
     })
   }
 
