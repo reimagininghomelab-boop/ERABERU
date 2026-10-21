@@ -1,0 +1,52 @@
+-- offers の authenticated INSERT / UPDATE 権限を剥奪する
+--
+-- 目的:
+--   一般ログインユーザーによる public.offers の直接作成・変更を恒久的に禁止する。
+--   現状の INSERT ポリシー（buyers can create offers: buyer_id = auth.uid()）のみでは、
+--   /api/offers/create が行う「有料開示済み確認」「営業の公開状態確認」を
+--   クライアントからの直接 INSERT で迂回できるため、GRANT 側で封鎖する。
+--
+-- 適用前の DB 状態（前提として提示されたもの・本 migration 作成時に未再確認）:
+--   GRANT    : authenticated に INSERT / SELECT / UPDATE
+--              postgres / service_role に全権限
+--   ポリシー : INSERT … buyers can create offers（buyer_id = auth.uid()）
+--              SELECT … 本人・担当営業・管理者
+--              UPDATE … 管理者メールアドレス 2 件のみ
+--
+-- 現行コードの利用経路（全件調査済み）:
+--   INSERT : src/app/api/offers/create/route.ts（authenticated）のみ
+--            ※ 営業検証期間中は OFFERS_PAUSED により 503 で停止中
+--   UPDATE / DELETE / upsert : 0 件（管理画面のオファータブも表示のみ）
+--   SELECT : admin / mypage / search / review/write / salesperson/dashboard
+--            および offers/create の重複確認（いずれも authenticated の直接 SELECT）
+--   anon / service_role / Edge Function からの参照 : 0 件
+--
+-- 再開時の注意:
+--   offers/create を authenticated の直接 INSERT のまま再開すると権限エラーになる。
+--   再開前に service_role での INSERT、または SECURITY DEFINER RPC へ移行すること。
+--
+-- 触れないもの:
+--   authenticated の SELECT 権限、RLS ポリシー、テーブル定義、
+--   service_role / postgres の全権限
+
+REVOKE INSERT, UPDATE ON TABLE public.offers FROM authenticated;
+
+-- 適用後の確認クエリ（手動）:
+--   SELECT grantee, privilege_type
+--   FROM information_schema.role_table_grants
+--   WHERE table_schema = 'public' AND table_name = 'offers'
+--   ORDER BY grantee, privilege_type;
+--   → authenticated : INSERT / UPDATE が無いこと（SELECT は残る）
+--
+--   SELECT grantee, column_name, privilege_type
+--   FROM information_schema.column_privileges
+--   WHERE table_schema = 'public' AND table_name = 'offers'
+--     AND grantee = 'authenticated' AND privilege_type IN ('INSERT', 'UPDATE');
+--   → 0 行（列単位 GRANT はテーブル単位の REVOKE では消えないため確認する）
+--
+-- 適用後テスト:
+--   - 一般ユーザー JWT で offers に INSERT / UPDATE → 権限エラー
+--   - mypage・search・review/write・営業ダッシュボード・管理画面のオファー表示が変わらない
+--
+-- ロールバック（必要な場合のみ手動実行）:
+--   GRANT INSERT, UPDATE ON TABLE public.offers TO authenticated;
