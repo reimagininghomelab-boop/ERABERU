@@ -181,16 +181,27 @@ export async function POST(request: NextRequest) {
   let registrationResult: string
   if (existing?.id) {
     // 既存プロフィールの再送信では status を変更しない（運営が pending にした営業が自分で active に戻せないようにする）
-    const { error } = await admin
+    // 再送信は運営確認待ち（pending）の場合のみ受け付ける。active / suspended / rejected の会社情報を
+    // このAPIで書き換えられないよう、確認と更新の間に status が変わった場合も含めて UPDATE 文自体に条件を付ける
+    const { data: updated, error } = await admin
       .from('salesperson_profiles')
       .update(profileData)
       .eq('id', existing.id)
       .eq('user_id', user.id)
+      .eq('status', 'pending')
+      .select('id, status')
+      .maybeSingle()
     if (error) {
       console.error('[register-profile] update error', { code: error.code, message: error.message })
       return NextResponse.json({ error: '更新に失敗しました' }, { status: 500 })
     }
-    registrationResult = existing.status as string
+    if (!updated) {
+      return NextResponse.json(
+        { error: '登録済みのプロフィールはこの画面から変更できません。プロフィールの編集はダッシュボードから行ってください' },
+        { status: 409 }
+      )
+    }
+    registrationResult = updated.status as string
   } else {
     // 新規登録: 会社ドメイン一致のみ即時公開、それ以外（不一致・ドメイン未登録・その他の会社）は運営確認待ち
     const status = isAutoApproved ? 'active' : 'pending'

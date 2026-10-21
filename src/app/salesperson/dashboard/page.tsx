@@ -244,7 +244,6 @@ export default function SalespersonDashboard() {
     const { error } = await supabase.from('salesperson_profiles').update({
       family_name: form.family_name || null,
       given_name: form.given_name || null,
-      company_name: form.company_name || null,
       department: form.department || null,
       bio: form.bio || null,
       area_prefecture: corePrefecture || null,
@@ -521,10 +520,10 @@ export default function SalespersonDashboard() {
               <label className="text-xs text-gray-500 mb-1 block">会社名</label>
               <input
                 value={form.company_name}
-                onChange={(e) => setForm((p: any) => ({ ...p, company_name: e.target.value }))}
-                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
-                placeholder="○○ハウス株式会社"
+                readOnly
+                className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-stone-100 text-gray-500 cursor-not-allowed focus:outline-none"
               />
+              <p className="text-xs text-gray-400 mt-1">会社の変更は運営へお問い合わせください</p>
             </div>
             <div>
               <label className="text-xs text-gray-500 mb-1 block">所属・部署（任意）</label>
