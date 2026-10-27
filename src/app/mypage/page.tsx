@@ -41,31 +41,45 @@ type Salesperson = {
   profile_image_url: string | null
 }
 
-// 施主が接点を持った全営業（オファーまたは口コミ）
+// 施主が接点を持った全営業（オファー・口コミ・プロフィール開示）
+// salesperson が null の場合は公開VIEWに無い営業（非公開・削除等を区別しない）
 type ContactGroup = {
-  salesperson: Salesperson
+  salespersonId: string
+  salesperson: Salesperson | null
   offers: Offer[]
   reviews: Review[]
   availablePhases: { value: PhaseValue; label: string; icon: string }[]
   hasReview: boolean
   hasOffer: boolean
+  hasUnlock: boolean
 }
 
 export default function MyPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
   const [groups, setGroups] = useState<ContactGroup[]>([])
   const [activeTab, setActiveTab] = useState<'all' | 'offers' | 'reviews'>('all')
 
   useEffect(() => {
     const supabase = createClient()
+    let cancelled = false
+    const fail = (label: string, detail: unknown) => {
+      console.error(`[mypage] ${label}`, detail)
+      if (cancelled) return
+      setLoadError(true)
+      setLoading(false)
+    }
+
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/auth/login'); return }
 
       const [
-        { data: myReviews },
-        { data: myOffers },
+        { data: myReviews, error: reviewsError },
+        { data: myOffers, error: offersError },
+        { data: myUnlocks, error: unlocksError },
       ] = await Promise.all([
         supabase
           .from('anonymous_reviews')
@@ -78,57 +92,98 @@ export default function MyPage() {
           .select('id, salesperson_id, area, timing, message, status, created_at')
           .eq('buyer_id', user.id)
           .order('created_at', { ascending: false }),
+        // 本人の開示履歴（buyer_id = 本人の行のみ）
+        supabase
+          .from('unlocked_profiles')
+          .select('agent_id')
+          .eq('buyer_id', user.id),
       ])
+      if (reviewsError || offersError || unlocksError) {
+        fail('history load error', { reviewsError, offersError, unlocksError })
+        return
+      }
 
       const reviewList: Review[] = myReviews ?? []
       const offerList: Offer[] = myOffers ?? []
+      const unlockedIds = new Set((myUnlocks ?? []).map((u: { agent_id: string }) => u.agent_id))
 
       // 接点を持った営業IDを集約
       const spIds = [
         ...new Set([
           ...reviewList.map((r) => r.salesperson_id),
           ...offerList.map((o) => o.salesperson_id),
+          ...unlockedIds,
         ]),
       ]
 
-      if (spIds.length === 0) { setLoading(false); return }
+      if (spIds.length === 0) {
+        if (!cancelled) { setGroups([]); setLoadError(false); setLoading(false) }
+        return
+      }
 
-      const { data: salespeople } = await supabase
+      const { data: salespeople, error: salespeopleError } = await supabase
         .from('safe_salesperson_profiles')
         .select('id, company_name, name_initials, profile_image_url')
         .in('id', spIds)
+      // VIEW の取得に失敗した場合は、全員を非公開と誤判定しないようエラー表示にする
+      if (salespeopleError) {
+        fail('safe_salesperson_profiles load error', salespeopleError)
+        return
+      }
 
       const spMap: Record<string, Salesperson> = {}
       ;(salespeople ?? []).forEach((sp: Salesperson) => { spMap[sp.id] = sp })
 
       const writablePhases = REVIEW_PHASES.filter((p) => !p.qrOnly)
 
-      const result: ContactGroup[] = spIds
-        .filter((id) => spMap[id])
-        .map((id) => {
-          const reviews = reviewList.filter((r) => r.salesperson_id === id)
-          const offers = offerList.filter((o) => o.salesperson_id === id)
-          const submittedPhaseValues = reviews.map((r) => r.phase)
-          const availablePhases = writablePhases
-            .filter((p) => !submittedPhaseValues.includes(p.value))
-            .map((p) => ({ value: p.value, label: p.label, icon: p.icon }))
-          return {
-            salesperson: spMap[id],
-            offers,
-            reviews,
-            availablePhases,
-            hasReview: reviews.length > 0,
-            hasOffer: offers.length > 0,
-          }
-        })
+      // 公開VIEWに無い営業も履歴として残す
+      const result: ContactGroup[] = spIds.map((id) => {
+        const reviews = reviewList.filter((r) => r.salesperson_id === id)
+        const offers = offerList.filter((o) => o.salesperson_id === id)
+        const submittedPhaseValues = reviews.map((r) => r.phase)
+        const availablePhases = writablePhases
+          .filter((p) => !submittedPhaseValues.includes(p.value))
+          .map((p) => ({ value: p.value, label: p.label, icon: p.icon }))
+        return {
+          salespersonId: id,
+          salesperson: spMap[id] ?? null,
+          offers,
+          reviews,
+          availablePhases,
+          hasReview: reviews.length > 0,
+          hasOffer: offers.length > 0,
+          hasUnlock: unlockedIds.has(id),
+        }
+      })
 
+      if (cancelled) return
       setGroups(result)
+      setLoadError(false)
       setLoading(false)
     }
-    load()
-  }, [router])
+    load().catch((e) => fail('load exception', e))
+    return () => { cancelled = true }
+  }, [router, reloadKey])
 
   if (loading) return <div className="min-h-screen bg-stone-100 flex items-center justify-center text-gray-400">読み込み中...</div>
+
+  if (loadError) return (
+    <main className="min-h-screen bg-stone-100">
+      <Header />
+      <div className="max-w-2xl mx-auto px-4 py-8">
+        <div className="bg-white rounded-2xl border border-red-200 p-10 text-center space-y-3">
+          <p className="text-sm font-bold text-red-600">相談・口コミの履歴を読み込めませんでした</p>
+          <p className="text-xs text-gray-500">通信状況をご確認のうえ、もう一度お試しください。</p>
+          <button
+            onClick={() => { setLoading(true); setReloadKey((k) => k + 1) }}
+            className="text-sm text-red-600 border border-red-300 px-4 py-2 rounded-lg transition hover:bg-red-50"
+          >
+            再試行
+          </button>
+        </div>
+      </div>
+    </main>
+  )
 
   const filteredGroups = activeTab === 'offers'
     ? groups.filter((g) => g.hasOffer)
@@ -136,8 +191,8 @@ export default function MyPage() {
     ? groups.filter((g) => g.hasReview)
     : groups
 
-  // 相談済みで口コミ未投稿の営業数
-  const pendingReviewCount = groups.filter((g) => g.hasOffer && !g.hasReview).length
+  // 相談済みで口コミ未投稿の営業数（現在プロフィールを表示できない営業は投稿導線を出さないため除く）
+  const pendingReviewCount = groups.filter((g) => g.salesperson && g.hasOffer && !g.hasReview).length
 
   return (
     <main className="min-h-screen bg-stone-100">
@@ -191,32 +246,51 @@ export default function MyPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredGroups.map(({ salesperson, offers, reviews, availablePhases, hasOffer, hasReview }) => (
-              <div key={salesperson.id} className="bg-white rounded-2xl border border-stone-200 p-5 space-y-4">
+            {filteredGroups.map(({ salespersonId, salesperson, offers, reviews, availablePhases, hasOffer, hasReview, hasUnlock }) => (
+              <div key={salespersonId} className="bg-white rounded-2xl border border-stone-200 p-5 space-y-4">
                 {/* 営業マン情報 */}
-                <div className="flex items-center justify-between">
+                {salesperson ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full overflow-hidden bg-stone-100 flex items-center justify-center shrink-0">
+                        {salesperson.profile_image_url
+                          ? <img src={salesperson.profile_image_url} alt="" className="w-full h-full object-cover" />
+                          : <span className="text-2xl">👤</span>}
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">{salesperson.company_name}</p>
+                        <p className="text-sm font-bold text-gray-800">
+                          {salesperson.name_initials ? `${salesperson.name_initials} さん` : '---'}
+                        </p>
+                        <div className="flex gap-1.5 mt-0.5">
+                          {hasOffer && <span className="text-xs bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full">相談済み</span>}
+                          {hasReview && <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full">口コミ投稿済み</span>}
+                          {hasUnlock && <span className="text-xs bg-stone-100 text-stone-600 px-1.5 py-0.5 rounded-full">開示済み</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <Link href={`/salesperson/${salesperson.id}`}
+                      className="text-xs text-teal-600 border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition shrink-0">
+                      プロフィール
+                    </Link>
+                  </div>
+                ) : (
+                  // 公開VIEWに無い営業: 実名・会社名・写真・リンクは表示せず、本人の履歴のみ残す
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full overflow-hidden bg-stone-100 flex items-center justify-center shrink-0">
-                      {salesperson.profile_image_url
-                        ? <img src={salesperson.profile_image_url} alt="" className="w-full h-full object-cover" />
-                        : <span className="text-2xl">👤</span>}
+                    <div className="w-12 h-12 rounded-full bg-stone-100 flex items-center justify-center shrink-0">
+                      <span className="text-2xl">👤</span>
                     </div>
                     <div>
-                      <p className="text-xs text-gray-400">{salesperson.company_name}</p>
-                      <p className="text-sm font-bold text-gray-800">
-                        {salesperson.name_initials ? `${salesperson.name_initials} さん` : '---'}
-                      </p>
+                      <p className="text-sm font-bold text-gray-600">以前利用した担当者</p>
+                      <p className="text-xs text-gray-400">現在プロフィールを表示できません</p>
                       <div className="flex gap-1.5 mt-0.5">
-                        {hasOffer && <span className="text-xs bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full">相談済み</span>}
-                        {hasReview && <span className="text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full">口コミ投稿済み</span>}
+                        {hasOffer && <span className="text-xs bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded-full">相談済み</span>}
+                        {hasReview && <span className="text-xs bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded-full">口コミ投稿済み</span>}
+                        {hasUnlock && <span className="text-xs bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded-full">開示済み</span>}
                       </div>
                     </div>
                   </div>
-                  <Link href={`/salesperson/${salesperson.id}`}
-                    className="text-xs text-teal-600 border border-teal-200 px-3 py-1.5 rounded-lg hover:bg-teal-50 transition shrink-0">
-                    プロフィール
-                  </Link>
-                </div>
+                )}
 
                 {/* 相談リクエスト一覧 */}
                 {offers.length > 0 && (
@@ -274,7 +348,8 @@ export default function MyPage() {
                   </div>
                 )}
 
-                {/* 口コミ投稿入口 */}
+                {/* 口コミ投稿入口（現在プロフィールを表示できない営業には出さない） */}
+                {salesperson && (
                 <div className="space-y-2">
                   {/* 相談済みで口コミ未投稿の場合：最初の口コミ促進 */}
                   {hasOffer && !hasReview && (
@@ -308,6 +383,7 @@ export default function MyPage() {
                     <p className="text-xs text-gray-400 text-center py-1">すべてのフェーズの口コミを投稿済みです ✓</p>
                   )}
                 </div>
+                )}
               </div>
             ))}
           </div>

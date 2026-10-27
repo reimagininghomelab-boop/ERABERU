@@ -88,7 +88,8 @@ export default function SalespersonRegisterPage() {
       .eq('user_id', userId)
       .maybeSingle()
 
-    if (profile?.status === 'active') {
+    // 登録フォームは新規登録者と承認待ち（pending）の再送信のみ。それ以外の既存プロフィールはダッシュボードへ
+    if (profile && profile.status !== 'pending') {
       router.replace('/salesperson/dashboard')
       return
     }

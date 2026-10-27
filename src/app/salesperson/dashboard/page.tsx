@@ -139,7 +139,8 @@ export default function SalespersonDashboard() {
   }, [])
 
   const handleToggleVisibility = async () => {
-    if (!profile || visibilityUpdating) return
+    // 公開設定の切替は承認済み（active）の場合のみ。運営による非公開（admin_hidden）等では操作させない
+    if (!profile || visibilityUpdating || profile.status !== 'active') return
     setVisibilityUpdating(true)
     const supabase = createClient()
     const newVal = !profile.is_visible
@@ -328,6 +329,15 @@ export default function SalespersonDashboard() {
             <p className="text-sm font-semibold text-red-600">審査否認</p>
           </div>
         )}
+        {profile.status === 'admin_hidden' && (
+          <div className="bg-orange-50 border border-orange-200 rounded-2xl px-5 py-4">
+            <p className="text-sm font-semibold text-orange-700">運営によりプロフィールが非公開になっています</p>
+            <p className="text-xs text-orange-600 mt-0.5 leading-relaxed">
+              現在、検索結果やプロフィールページには表示されず、QRコードからの口コミ投稿も受け付けていません。
+              再公開には運営側の対応が必要です。ご不明な点は運営までお問い合わせください。
+            </p>
+          </div>
+        )}
 
         {/* ヘッダー */}
         <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 px-6 py-5 flex items-center justify-between">
@@ -379,6 +389,13 @@ export default function SalespersonDashboard() {
         {/* ===== 口コミ管理タブ ===== */}
         {tab === 'reviews' && (
           <div className="space-y-4">
+            {profile.status === 'admin_hidden' && (
+              <div className="bg-stone-50 rounded-2xl border border-stone-200 px-5 py-4">
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  運営によりプロフィールが非公開のため、口コミ用QRコードは現在利用できません。
+                </p>
+              </div>
+            )}
             {/* QRコード */}
             {profile.status === 'active' && qrToken && (
               <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6">
@@ -801,7 +818,18 @@ export default function SalespersonDashboard() {
         )}
 
         {/* ===== 施主プレビュータブ ===== */}
-        {tab === 'preview' && (
+        {/* 運営による非公開中は公開ビューに行が無く詳細ページが読み込み中のままになるため、プレビューへの導線を出さない */}
+        {tab === 'preview' && profile.status === 'admin_hidden' && (
+          <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6 text-center space-y-2">
+            <span className="text-4xl block">🔒</span>
+            <p className="text-sm font-bold text-gray-700">現在、施主向けページは表示されません</p>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              運営によりプロフィールが非公開のため、施主プレビューは利用できません。<br />
+              運営による再公開後にご利用いただけます。
+            </p>
+          </div>
+        )}
+        {tab === 'preview' && profile.status !== 'admin_hidden' && (
           <div className="space-y-4">
             <div className="bg-stone-50 rounded-2xl shadow-sm border border-stone-200 p-6 text-center space-y-4">
               <span className="text-4xl block">👁️</span>

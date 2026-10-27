@@ -26,6 +26,9 @@ function SalespersonDetailContent() {
   const searchParams = useSearchParams()
   const isPreview = searchParams.get('preview') === '1'
   const [agent, setAgent] = useState<any>(null)
+  // 公開VIEWの取得状態。notFound は非公開・削除等を区別しない
+  const [agentLoadState, setAgentLoadState] = useState<'loading' | 'found' | 'notFound' | 'error'>('loading')
+  const [reloadKey, setReloadKey] = useState(0)
   const [unlockedData, setUnlockedData] = useState<any>(null)
   const [user, setUser] = useState<User | null>(null)
   const [paying, setPaying] = useState(false)
@@ -121,7 +124,11 @@ function SalespersonDetailContent() {
       const [publicResult, statsResult] = await Promise.allSettled([
         fetch(`${SUPA_URL}/rest/v1/safe_salesperson_profiles?select=*&id=eq.${id}`, {
           headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
-        }).then(r => r.ok ? r.json().then((arr: any[]) => arr[0] ?? null) : null),
+        }).then(r => {
+          // HTTP エラーは「見つからない」と区別するため例外にする
+          if (!r.ok) throw new Error(`safe_salesperson_profiles ${r.status}`)
+          return r.json().then((arr: any[]) => arr[0] ?? null)
+        }),
         fetch(`${SUPA_URL}/rest/v1/rpc/get_salesperson_review_stats`, {
           method: 'POST',
           headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json' },
@@ -129,9 +136,19 @@ function SalespersonDetailContent() {
         }).then(r => r.ok ? r.json() : null),
       ])
 
-      if (publicResult.status === 'fulfilled' && publicResult.value) {
-        setAgent(publicResult.value)
+      if (cancelled) return
+      if (publicResult.status === 'rejected') {
+        console.error('[salesperson detail] public profile load error:', publicResult.reason)
+        setAgentLoadState('error')
+        return
       }
+      // 公開VIEWに無い（非公開・削除等）場合は、開示済みプロフィールや口コミの取得に進まない
+      if (!publicResult.value) {
+        setAgentLoadState('notFound')
+        return
+      }
+      setAgent(publicResult.value)
+      setAgentLoadState('found')
       if (statsResult.status === 'fulfilled' && statsResult.value) {
         setReviewStats(statsResult.value)
       }
@@ -222,7 +239,12 @@ function SalespersonDetailContent() {
 
     load()
     return () => { cancelled = true }
-  }, [id])
+  }, [id, reloadKey])
+
+  const handleRetryLoad = () => {
+    setAgentLoadState('loading')
+    setReloadKey((k) => k + 1)
+  }
 
   const handleFavoriteToggle = async () => {
     if (!user || favoriteLoading) return
@@ -301,6 +323,39 @@ function SalespersonDetailContent() {
       setOfferSending(false)
     }
   }
+
+  if (agentLoadState === 'notFound') return (
+    <div className="min-h-screen bg-stone-100">
+      <Header backButton />
+      <div className="max-w-2xl mx-auto px-6 py-8">
+        <div className="bg-white rounded-2xl border border-stone-200 p-10 text-center space-y-3">
+          <p className="text-3xl">🔒</p>
+          <p className="text-sm font-bold text-gray-700">このプロフィールは現在表示できません</p>
+          <Link href="/search" className="inline-block text-sm text-teal-600 hover:underline">
+            営業担当者を探す →
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+
+  if (agentLoadState === 'error') return (
+    <div className="min-h-screen bg-stone-100">
+      <Header backButton />
+      <div className="max-w-2xl mx-auto px-6 py-8">
+        <div className="bg-white rounded-2xl border border-red-200 p-10 text-center space-y-3">
+          <p className="text-sm font-bold text-red-600">プロフィールの読み込みに失敗しました</p>
+          <p className="text-xs text-gray-500">通信状況をご確認のうえ、もう一度お試しください。</p>
+          <button
+            onClick={handleRetryLoad}
+            className="text-sm text-red-600 border border-red-300 px-4 py-2 rounded-lg transition hover:bg-red-50"
+          >
+            再試行
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 
   if (!agent) return (
     <div className="min-h-screen bg-stone-100">

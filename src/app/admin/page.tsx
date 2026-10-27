@@ -1,11 +1,64 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { QRCodeSVG } from 'qrcode.react'
 
 const ADMIN_EMAILS = ['reimagining.home.lab@gmail.com', '1989yo55@gmail.com']
+
+const SALESPERSON_COLUMNS = 'id, real_name, family_name, given_name, company_name, area_prefecture, experience_years, bio, status, is_visible, is_verified, ai_summary, qr_token, created_at'
+
+// 管理者が行える営業の状態遷移（これ以外の遷移は画面から行わない）
+const STATUS_TRANSITIONS = {
+  approve: { from: 'pending', to: 'active', label: '承認' },
+  hide: { from: 'active', to: 'admin_hidden', label: '非公開' },
+  republish: { from: 'admin_hidden', to: 'active', label: '再公開' },
+} as const
+type StatusAction = keyof typeof STATUS_TRANSITIONS
+
+type SalespersonCategory = 'pending' | 'public' | 'selfHidden' | 'adminHidden' | 'other'
+type SalespersonState = { status?: string | null; is_visible?: boolean | null }
+
+// どの営業も必ずいずれか1区分に入る（判定できないものは other）
+const classifySalesperson = (a: SalespersonState): SalespersonCategory => {
+  if (a.status === 'pending') return 'pending'
+  if (a.status === 'active' && a.is_visible === true) return 'public'
+  if (a.status === 'active' && a.is_visible === false) return 'selfHidden'
+  if (a.status === 'admin_hidden') return 'adminHidden'
+  return 'other'
+}
+
+type StatusNotice = { type: 'success' | 'error' | 'warning'; message: string }
+
+const STALE_CARD_MESSAGE = 'このカードの表示は古い可能性があります。ページを再読み込みしてください。'
+
+// 営業一覧を取得する。例外も含めて失敗は error 文言で返し、他のデータ取得を止めない
+const fetchApplications = async () => {
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('salesperson_profiles')
+      .select(SALESPERSON_COLUMNS)
+      .order('created_at', { ascending: false })
+    if (error) {
+      console.error('[admin] salesperson_profiles load error', { code: error.code, message: error.message })
+      return { data: null, error: `営業マン一覧の読み込みに失敗しました（${error.code || 'unknown'}）。` }
+    }
+    return { data: data ?? [], error: null }
+  } catch (e) {
+    console.error('[admin] salesperson_profiles load exception', e)
+    return { data: null, error: '営業マン一覧の読み込み中にエラーが発生しました。' }
+  }
+}
+
+const HIDE_CONFIRM_MESSAGE = [
+  'この営業マンを管理者非公開にしますか？',
+  '',
+  '・検索結果・詳細ページに表示されなくなります',
+  '・QRコード経由の口コミ投稿ができなくなります',
+  '・「再公開」で公開状態に戻せます',
+].join('\n')
 
 /*
  * TODO: BtoBデータ出力機能を将来実装する際の制限ポリシー
@@ -38,7 +91,14 @@ export default function AdminPage() {
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [tab, setTab] = useState<'pending' | 'approved' | 'superseded' | 'salesperson' | 'offers'>('pending')
   const [applications, setApplications] = useState<any[]>([])
-  const [processingAppId, setProcessingAppId] = useState<string | null>(null)
+  const [applicationsLoadError, setApplicationsLoadError] = useState<string | null>(null)
+  const [applicationsRetrying, setApplicationsRetrying] = useState(false)
+  const [statusUpdatingIds, setStatusUpdatingIds] = useState<Record<string, boolean>>({})
+  const [statusNotices, setStatusNotices] = useState<Record<string, StatusNotice>>({})
+  // 再取得に失敗し、表示が古い可能性があるカード（最新行を取得できるまで状態変更を禁止する）
+  const [staleIds, setStaleIds] = useState<Record<string, boolean>>({})
+  // 状態変更・再取得の進行中ロック。state は再描画まで反映されないため、重複判定は ref で同期的に行う
+  const statusLockRef = useRef<Set<string>>(new Set())
   const [offers, setOffers] = useState<any[]>([])
   const [aiGeneratingId, setAiGeneratingId] = useState<string | null>(null)
   const [aiResults, setAiResults] = useState<Record<string, { summary: string; goodMatch: string[]; communicationStyle: string; strengths: string[]; caution: string }>>({})
@@ -47,6 +107,38 @@ export default function AdminPage() {
   const [anonApprovingId, setAnonApprovingId] = useState<string | null>(null)
   const [qrReissuingId, setQrReissuingId] = useState<string | null>(null)
   const [qrTokenMap, setQrTokenMap] = useState<Record<string, string>>({})
+
+  const applyApplications = (appData: typeof applications) => {
+    setApplications(appData)
+    const tokenMap: Record<string, string> = {}
+    const nameMap: Record<string, string> = {}
+    appData.forEach((a) => {
+      if (a.qr_token) tokenMap[a.id] = a.qr_token
+      const name = (a.family_name && a.given_name)
+        ? `${a.family_name} ${a.given_name}`
+        : (a.real_name ?? '')
+      nameMap[a.id] = name ? `${name}（${a.company_name}）` : a.company_name
+    })
+    setQrTokenMap(tokenMap)
+    setAgentMap((prev) => ({ ...prev, ...nameMap }))
+  }
+
+  const handleRetryApplications = async () => {
+    if (applicationsRetrying) return
+    setApplicationsRetrying(true)
+    const result = await fetchApplications()
+    if (result.data) {
+      applyApplications(result.data)
+      setApplicationsLoadError(null)
+      // 一覧全体を取り直したので、表示が古い可能性のあったカードの操作制限を解除する
+      const staleKeys = Object.keys(staleIds)
+      setStaleIds({})
+      setStatusNotices((prev) => { const next = { ...prev }; staleKeys.forEach((k) => delete next[k]); return next })
+    } else {
+      setApplicationsLoadError(result.error)
+    }
+    setApplicationsRetrying(false)
+  }
 
   useEffect(() => {
     const supabase = createClient()
@@ -57,7 +149,7 @@ export default function AdminPage() {
         router.replace('/')
         return
       }
-      const [{ data: reviewData }, { data: agentData }, { data: appData }, { data: anonData }, { data: offerData }] = await Promise.all([
+      const [{ data: reviewData }, { data: agentData }, applicationsResult, { data: anonData }, { data: offerData }] = await Promise.all([
         supabase
           .from('contract_reviews')
           .select('id, salesperson_id, user_id, rating, content, meeting_status, contract_price, is_approved, first_approved_at, created_at')
@@ -65,10 +157,7 @@ export default function AdminPage() {
         supabase
           .from('safe_salesperson_profiles')
           .select('id, company_name'),
-        supabase
-          .from('salesperson_profiles')
-          .select('id, real_name, family_name, given_name, company_name, area_prefecture, experience_years, bio, status, ai_summary, qr_token, created_at')
-          .order('created_at', { ascending: false }),
+        fetchApplications(),
         supabase
           .from('anonymous_reviews')
           .select('id, salesperson_id, rating, content, phase, source, status, is_approved, created_at')
@@ -85,20 +174,8 @@ export default function AdminPage() {
         agentData.forEach((a) => { map[a.id] = a.company_name })
         setAgentMap(map)
       }
-      if (appData) {
-        setApplications(appData)
-        const tokenMap: Record<string, string> = {}
-        const nameMap: Record<string, string> = {}
-        appData.forEach((a) => {
-          if (a.qr_token) tokenMap[a.id] = a.qr_token
-          const name = (a.family_name && a.given_name)
-            ? `${a.family_name} ${a.given_name}`
-            : (a.real_name ?? '')
-          nameMap[a.id] = name ? `${name}（${a.company_name}）` : a.company_name
-        })
-        setQrTokenMap(tokenMap)
-        setAgentMap((prev) => ({ ...prev, ...nameMap }))
-      }
+      if (applicationsResult.error) setApplicationsLoadError(applicationsResult.error)
+      if (applicationsResult.data) applyApplications(applicationsResult.data)
       if (anonData) setAnonReviews(anonData)
       if (offerData) setOffers(offerData)
       setLoading(false)
@@ -153,17 +230,125 @@ export default function AdminPage() {
     setApprovingId(null)
   }
 
-  const handleApproveApplication = async (appId: string) => {
-    setProcessingAppId(appId)
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('salesperson_profiles')
-      .update({ status: 'active' })
-      .eq('id', appId)
-    if (!error) {
-      setApplications((prev) => prev.map((a) => a.id === appId ? { ...a, status: 'active' } : a))
+  // DB から最新行を取得して一覧に反映する。取得できた場合のみ true
+  const refetchApplication = async (appId: string): Promise<boolean> => {
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('salesperson_profiles')
+        .select(SALESPERSON_COLUMNS)
+        .eq('id', appId)
+        .maybeSingle()
+      if (error) {
+        console.error('[admin] salesperson_profiles refetch error', { code: error.code, message: error.message })
+        return false
+      }
+      if (!data) return false
+      setApplications((prev) => prev.map((a) => a.id === appId ? data : a))
+      return true
+    } catch (e) {
+      console.error('[admin] salesperson_profiles refetch exception', e)
+      return false
     }
-    setProcessingAppId(null)
+  }
+
+  const lockStatus = (appId: string) => {
+    statusLockRef.current.add(appId)
+    setStatusUpdatingIds((prev) => ({ ...prev, [appId]: true }))
+  }
+
+  const unlockStatus = (appId: string) => {
+    statusLockRef.current.delete(appId)
+    setStatusUpdatingIds((prev) => { const next = { ...prev }; delete next[appId]; return next })
+  }
+
+  const handleChangeStatus = async (appId: string, action: StatusAction) => {
+    // 同じ営業の処理が進行中、または表示が古い可能性がある間は受け付けない。異なる営業の操作は妨げない
+    if (statusLockRef.current.has(appId) || staleIds[appId]) return
+    const transition = STATUS_TRANSITIONS[action]
+    if (action === 'hide' && !confirm(HIDE_CONFIRM_MESSAGE)) return
+    if (statusLockRef.current.has(appId)) return
+
+    lockStatus(appId)
+    setStatusNotices((prev) => { const next = { ...prev }; delete next[appId]; return next })
+
+    try {
+      // applied: 更新を確認 / rejected: 更新されていない / unknown: 通信エラー等で反映されたか不明
+      let outcome: 'applied' | 'rejected' | 'unknown'
+      let message: string
+      try {
+        const supabase = createClient()
+        // 変更前 status も条件に含め、他の操作で状態が変わっていた場合は更新しない
+        const { data, error, status } = await supabase
+          .from('salesperson_profiles')
+          .update({ status: transition.to })
+          .eq('id', appId)
+          .eq('status', transition.from)
+          .select('id, status, is_visible')
+          .maybeSingle()
+
+        if (error) {
+          console.error('[admin] salesperson status update error', { status, code: error.code, message: error.message })
+          if (status === 0 || status >= 502) {
+            // 応答なし・ゲートウェイエラーは DB に届いたか判断できない
+            outcome = 'unknown'
+            message = `通信エラーのため、${transition.label}が反映されたか確認できませんでした。`
+          } else {
+            outcome = 'rejected'
+            message = error.code === '42501'
+              ? `${transition.label}できませんでした。この操作の権限がありません。`
+              : `${transition.label}に失敗しました（${error.code || 'unknown'}）。`
+          }
+        } else if (!data || data.status !== transition.to) {
+          // 0件: 権限（RLS）による除外か、他の操作による状態変更のどちらかで、画面からは区別できない
+          outcome = 'rejected'
+          message = `${transition.label}を確認できませんでした。権限がないか、他の操作で状態が変更された可能性があります。`
+        } else {
+          outcome = 'applied'
+          message = data.status === 'active' && data.is_visible === false
+            ? `${transition.label}しました。本人が非公開に設定しているため、検索には表示されません。`
+            : `${transition.label}しました。`
+        }
+      } catch {
+        outcome = 'unknown'
+        message = `通信エラーのため、${transition.label}が反映されたか確認できませんでした。`
+      }
+
+      const refetched = await refetchApplication(appId)
+      let notice: StatusNotice
+      if (refetched) {
+        notice = outcome === 'applied'
+          ? { type: 'success', message }
+          : outcome === 'rejected'
+            ? { type: 'error', message: `${message} 最新の状態を表示しています。` }
+            : { type: 'warning', message: `${message} 最新の状態を表示しています。結果はカードの表示で確認してください。` }
+      } else {
+        setStaleIds((prev) => ({ ...prev, [appId]: true }))
+        notice = outcome === 'applied'
+          ? { type: 'warning', message: `DBの更新結果を確認しましたが、最新の表示を取得できませんでした。${STALE_CARD_MESSAGE}` }
+          : { type: outcome === 'rejected' ? 'error' : 'warning', message: `${message} 最新の表示を取得できませんでした。${STALE_CARD_MESSAGE}` }
+      }
+      setStatusNotices((prev) => ({ ...prev, [appId]: notice }))
+    } finally {
+      unlockStatus(appId)
+    }
+  }
+
+  // 表示が古い可能性のあるカードを再取得する。取得できれば状態変更の禁止を解除する
+  const handleRefetchCard = async (appId: string) => {
+    if (statusLockRef.current.has(appId)) return
+    lockStatus(appId)
+    try {
+      const refetched = await refetchApplication(appId)
+      if (refetched) {
+        setStaleIds((prev) => { const next = { ...prev }; delete next[appId]; return next })
+        setStatusNotices((prev) => ({ ...prev, [appId]: { type: 'success', message: '最新の状態を取得しました。' } }))
+      } else {
+        setStatusNotices((prev) => ({ ...prev, [appId]: { type: 'warning', message: `最新の表示を取得できませんでした。${STALE_CARD_MESSAGE}` } }))
+      }
+    } finally {
+      unlockStatus(appId)
+    }
   }
 
 
@@ -236,20 +421,6 @@ export default function AdminPage() {
       // silent
     }
     setQrReissuingId(null)
-  }
-
-  const handleMakePrivate = async (appId: string) => {
-    if (!confirm('この営業マンを非公開にしますか？')) return
-    setProcessingAppId(appId)
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('salesperson_profiles')
-      .update({ status: 'pending' })
-      .eq('id', appId)
-    if (!error) {
-      setApplications((prev) => prev.map((a) => a.id === appId ? { ...a, status: 'pending' } : a))
-    }
-    setProcessingAppId(null)
   }
 
   if (loading) return (
@@ -327,7 +498,7 @@ export default function AdminPage() {
                 : 'bg-stone-50 text-gray-700 border border-stone-200 hover:border-blue-300'
             }`}
           >
-            営業マン申請
+            担当者管理
             {applications.filter((a) => a.status === 'pending').length > 0 && (
               <span className="ml-2 bg-white text-blue-500 text-xs px-1.5 py-0.5 rounded-full font-bold">
                 {applications.filter((a) => a.status === 'pending').length}
@@ -478,30 +649,54 @@ export default function AdminPage() {
           )
         )}
 
-        {/* 営業マン管理 */}
+        {/* 担当者管理 */}
         {tab === 'salesperson' && (() => {
-          const privateApps = applications.filter((a) => a.status === 'pending')
-          const activeApps = applications.filter((a) => a.status === 'active')
-          const otherApps = applications.filter((a) => ['rejected', 'suspended', 'banned', 'retired'].includes(a.status))
+          const groups: { key: SalespersonCategory; title: string; titleColor: string; apps: typeof applications }[] = [
+            { key: 'pending', title: '承認待ち', titleColor: 'text-blue-600', apps: [] },
+            { key: 'public', title: '公開中', titleColor: 'text-green-600', apps: [] },
+            { key: 'selfHidden', title: '本人非公開', titleColor: 'text-gray-700', apps: [] },
+            { key: 'adminHidden', title: '管理者非公開', titleColor: 'text-orange-600', apps: [] },
+            { key: 'other', title: 'その他', titleColor: 'text-gray-600', apps: [] },
+          ]
+          applications.forEach((a) => {
+            groups.find((g) => g.key === classifySalesperson(a))!.apps.push(a)
+          })
 
-          const statusLabel: Record<string, string> = {
-            pending: '非公開',
-            active: '公開中',
+          // その他区分に入る status の表示名（未知の値はそのまま表示）
+          const otherStatusLabel: Record<string, string> = {
             suspended: '一時停止',
             rejected: '審査否認',
             banned: 'BAN',
             retired: '退会',
           }
-          const statusColor: Record<string, string> = {
-            pending: 'bg-gray-100 text-gray-700',
-            active: 'bg-green-100 text-green-600',
-            suspended: 'bg-gray-100 text-gray-700',
-            rejected: 'bg-red-100 text-red-500',
-            banned: 'bg-red-200 text-red-700',
-            retired: 'bg-stone-100 text-stone-600',
+          const categoryBadge: Record<SalespersonCategory, { label: string; color: string }> = {
+            pending: { label: '承認待ち', color: 'bg-blue-100 text-blue-600' },
+            public: { label: '公開中', color: 'bg-green-100 text-green-600' },
+            selfHidden: { label: '本人非公開', color: 'bg-gray-100 text-gray-700' },
+            adminHidden: { label: '管理者非公開', color: 'bg-orange-100 text-orange-600' },
+            other: { label: '', color: 'bg-stone-100 text-stone-600' },
+          }
+          const badgeFor = (a: SalespersonState) => {
+            const category = classifySalesperson(a)
+            if (category !== 'other') return categoryBadge[category]
+            const label = a.status
+              ? (otherStatusLabel[a.status] ?? a.status)
+              : '不明'
+            return { label: a.status === 'active' ? '表示設定不明' : label, color: categoryBadge.other.color }
           }
 
-          const renderCard = (a: any) => (
+          const renderCard = (a: any) => {
+            const badge = badgeFor(a)
+            const isUpdating = !!statusUpdatingIds[a.id]
+            const isStale = !!staleIds[a.id]
+            const statusDisabled = isUpdating || isStale
+            const notice = statusNotices[a.id]
+            const statusAction: StatusAction | null =
+              a.status === 'pending' ? 'approve'
+              : a.status === 'active' ? 'hide'
+              : a.status === 'admin_hidden' ? 'republish'
+              : null
+            return (
             <div key={a.id} className="bg-stone-50 rounded-2xl border border-stone-200 p-6">
               <div className="flex items-start justify-between mb-3">
                 <div>
@@ -509,8 +704,11 @@ export default function AdminPage() {
                   <p className="text-xs text-gray-700 mt-0.5">{a.company_name}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColor[a.status] ?? 'bg-stone-100 text-stone-600'}`}>
-                    {statusLabel[a.status] ?? a.status}
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badge.color}`}>
+                    {badge.label}
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${a.is_verified ? 'bg-teal-50 text-teal-700' : 'bg-stone-100 text-stone-500'}`}>
+                    {a.is_verified ? '認証済み' : '未認証'}
                   </span>
                   <p className="text-xs text-gray-600">{new Date(a.created_at).toLocaleDateString('ja-JP')}</p>
                 </div>
@@ -550,22 +748,22 @@ export default function AdminPage() {
               )}
 
               <div className="flex gap-2 flex-wrap">
-                {a.status === 'active' && (
+                {statusAction === 'hide' && (
                   <button
-                    onClick={() => handleMakePrivate(a.id)}
-                    disabled={processingAppId === a.id}
+                    onClick={() => handleChangeStatus(a.id, 'hide')}
+                    disabled={statusDisabled}
                     className="flex-1 bg-stone-200 hover:bg-gray-300 disabled:opacity-50 text-gray-700 font-bold py-2.5 rounded-xl transition text-sm"
                   >
-                    {processingAppId === a.id ? '処理中...' : '非公開にする'}
+                    {isUpdating ? '処理中...' : '非公開にする'}
                   </button>
                 )}
-                {a.status === 'pending' && (
+                {(statusAction === 'approve' || statusAction === 'republish') && (
                   <button
-                    onClick={() => handleApproveApplication(a.id)}
-                    disabled={processingAppId === a.id}
+                    onClick={() => handleChangeStatus(a.id, statusAction)}
+                    disabled={statusDisabled}
                     className="flex-1 bg-blue-500 hover:bg-blue-400 disabled:bg-gray-200 disabled:text-gray-500 text-white font-bold py-2.5 rounded-xl transition text-sm"
                   >
-                    {processingAppId === a.id ? '処理中...' : '再公開'}
+                    {isUpdating ? '処理中...' : statusAction === 'approve' ? '承認' : '再公開'}
                   </button>
                 )}
                 <button
@@ -577,6 +775,20 @@ export default function AdminPage() {
                 </button>
               </div>
 
+              {notice && (
+                <p className={`text-xs mt-2 ${notice.type === 'success' ? 'text-green-600' : notice.type === 'warning' ? 'text-amber-600' : 'text-red-500'}`}>
+                  {notice.message}
+                </p>
+              )}
+              {isStale && (
+                <button
+                  onClick={() => handleRefetchCard(a.id)}
+                  disabled={isUpdating}
+                  className="mt-2 text-xs text-amber-700 border border-amber-300 px-2.5 py-1 rounded-lg transition hover:bg-amber-50 disabled:opacity-50"
+                >
+                  {isUpdating ? '取得中...' : '最新の状態を再取得'}
+                </button>
+              )}
               {aiErrors[a.id] && (
                 <p className="text-xs text-red-500 mt-2">{aiErrors[a.id]}</p>
               )}
@@ -609,28 +821,41 @@ export default function AdminPage() {
                 )
               })()}
             </div>
-          )
+            )
+          }
+
+          if (applicationsLoadError) {
+            return (
+              <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 space-y-3">
+                <p className="text-sm font-semibold text-red-600">{applicationsLoadError}</p>
+                <button
+                  onClick={handleRetryApplications}
+                  disabled={applicationsRetrying}
+                  className="text-xs text-red-600 border border-red-300 px-3 py-1.5 rounded-lg transition hover:bg-red-100 disabled:opacity-50"
+                >
+                  {applicationsRetrying ? '再試行中...' : '再試行'}
+                </button>
+              </div>
+            )
+          }
 
           return (
             <div className="space-y-6">
-              {activeApps.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-green-600 mb-3">公開中（{activeApps.length}件）</p>
-                  <div className="space-y-4">{activeApps.map(renderCard)}</div>
+              {applications.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  {groups.map((g) => (
+                    <span key={g.key} className="text-xs bg-stone-50 border border-stone-200 px-3 py-1 rounded-full text-gray-700">
+                      {g.title} <span className="font-bold">{g.apps.length}</span>
+                    </span>
+                  ))}
                 </div>
               )}
-              {privateApps.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-gray-700 mb-3">非公開（{privateApps.length}件）</p>
-                  <div className="space-y-4">{privateApps.map(renderCard)}</div>
+              {groups.filter((g) => g.apps.length > 0).map((g) => (
+                <div key={g.key}>
+                  <p className={`text-xs font-bold mb-3 ${g.titleColor}`}>{g.title}（{g.apps.length}件）</p>
+                  <div className="space-y-4">{g.apps.map(renderCard)}</div>
                 </div>
-              )}
-              {otherApps.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold text-gray-600 mb-3">その他（{otherApps.length}件）</p>
-                  <div className="space-y-4">{otherApps.map(renderCard)}</div>
-                </div>
-              )}
+              ))}
               {applications.length === 0 && (
                 <div className="text-center py-20 text-gray-600">
                   <p className="text-3xl mb-3">✓</p>
