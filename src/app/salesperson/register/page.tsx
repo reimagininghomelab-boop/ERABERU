@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
+import { normalizeKana, validateKanaPair } from '@/lib/kana'
 
 const PREFECTURES = [
   '北海道', '青森県', '岩手県', '宮城県', '秋田県', '山形県', '福島県',
@@ -64,6 +65,12 @@ export default function SalespersonRegisterPage() {
   // Step 2
   const [familyName, setFamilyName] = useState('')
   const [givenName, setGivenName] = useState('')
+  const [familyNameKana, setFamilyNameKana] = useState('')
+  const [givenNameKana, setGivenNameKana] = useState('')
+  // pending 再送信時の保存済み姓名（姓名変更の判定基準）。新規登録では null
+  const [savedNames, setSavedNames] = useState<{ family: string; given: string } | null>(null)
+  // 再確認した時点の「姓|名|セイ|メイ」。その後いずれかを編集すると一致しなくなり未確認に戻る
+  const [kanaConfirmedKey, setKanaConfirmedKey] = useState<string | null>(null)
   const [department, setDepartment] = useState('')
   const [coreCity, setCoreCity] = useState('')
   const [availablePrefectures, setAvailablePrefectures] = useState<string[]>([])
@@ -84,7 +91,7 @@ export default function SalespersonRegisterPage() {
 
     const { data: profile } = await supabase
       .from('salesperson_profiles')
-      .select('id, status, company_id, application_company_name, family_name, given_name, department, core_city, available_prefectures, qualifications, specialties, sales_styles, bio')
+      .select('id, status, company_id, application_company_name, family_name, given_name, family_name_kana, given_name_kana, department, core_city, available_prefectures, qualifications, specialties, sales_styles, bio')
       .eq('user_id', userId)
       .maybeSingle()
 
@@ -99,6 +106,9 @@ export default function SalespersonRegisterPage() {
     if (profile) {
       if (profile.family_name) setFamilyName(profile.family_name as string)
       if (profile.given_name) setGivenName(profile.given_name as string)
+      if (profile.family_name_kana) setFamilyNameKana(profile.family_name_kana as string)
+      if (profile.given_name_kana) setGivenNameKana(profile.given_name_kana as string)
+      setSavedNames({ family: (profile.family_name as string) ?? '', given: (profile.given_name as string) ?? '' })
       if (profile.department) setDepartment(profile.department as string)
       if (profile.core_city) setCoreCity(profile.core_city as string)
       if (profile.available_prefectures) setAvailablePrefectures(profile.available_prefectures as string[])
@@ -163,6 +173,13 @@ export default function SalespersonRegisterPage() {
   // selectedCompany は導出値として計算（useState不要）
   const selectedCompany = companies.find((c) => c.id === selectedCompanyId) ?? null
   const isOtherCompany = selectedCompanyId === OTHER_COMPANY_ID
+
+  // pending 再送信で保存済みの姓名から変更された場合のみ、フリガナの再確認を求める
+  const nameChanged =
+    savedNames !== null &&
+    (familyName.trim() !== savedNames.family || givenName.trim() !== savedNames.given)
+  const kanaKey = `${familyName.trim()}|${givenName.trim()}|${normalizeKana(familyNameKana)}|${normalizeKana(givenNameKana)}`
+  const kanaConfirmed = kanaConfirmedKey === kanaKey
 
   const togglePrefecture = (pref: string) => {
     setAvailablePrefectures(
@@ -233,7 +250,12 @@ export default function SalespersonRegisterPage() {
 
   const handleProfileSubmit = async () => {
     setStep2Error('')
-    if (!familyName || !givenName) { setStep2Error('姓と名を入力してください'); return }
+    if (!familyName.trim() || !givenName.trim()) { setStep2Error('姓と名を入力してください'); return }
+    const kana = validateKanaPair(familyNameKana, givenNameKana)
+    setFamilyNameKana(kana.family)
+    setGivenNameKana(kana.given)
+    if (kana.error) { setStep2Error(kana.error); return }
+    if (nameChanged && !kanaConfirmed) { setStep2Error('氏名を変更した場合は、フリガナを確認してチェックを入れてください'); return }
     if (!selectedCompanyId) { setStep2Error('会社情報が取得できませんでした。ページを再読み込みしてください。'); return }
 
     setStep2Loading(true)
@@ -245,6 +267,8 @@ export default function SalespersonRegisterPage() {
         body: JSON.stringify({
           family_name: familyName,
           given_name: givenName,
+          family_name_kana: kana.family,
+          given_name_kana: kana.given,
           company_id: selectedCompanyId,
           application_company_name: isOtherCompany ? companyNameInput : null,
           department: department || null,
@@ -473,6 +497,40 @@ export default function SalespersonRegisterPage() {
                       className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-stone-500 mb-1">フリガナ <span className="text-red-400">*</span></label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      value={familyNameKana}
+                      onChange={(e) => setFamilyNameKana(e.target.value)}
+                      onBlur={() => setFamilyNameKana(normalizeKana(familyNameKana))}
+                      placeholder="セイ（例: ヤマダ）"
+                      className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    />
+                    <input
+                      type="text"
+                      value={givenNameKana}
+                      onChange={(e) => setGivenNameKana(e.target.value)}
+                      onBlur={() => setGivenNameKana(normalizeKana(givenNameKana))}
+                      placeholder="メイ（例: マコト）"
+                      className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    />
+                  </div>
+                  <p className="text-xs text-stone-400 mt-1">全角カタカナで保存されます（ひらがな入力も可）。英字イニシャルの表示に使われます。</p>
+                  {nameChanged && (
+                    <label className="flex items-start gap-2 mt-2 text-xs text-stone-600">
+                      <input
+                        type="checkbox"
+                        checked={kanaConfirmed}
+                        onChange={(e) => setKanaConfirmedKey(e.target.checked ? kanaKey : null)}
+                        className="mt-0.5"
+                      />
+                      新しい氏名に合わせてフリガナを確認しました（読みが同じ場合もチェックしてください）
+                    </label>
+                  )}
                 </div>
 
                 <div>

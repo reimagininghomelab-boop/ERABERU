@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
+import { maskedName } from '@/lib/kana'
 
 const REVIEW_PHASES = [
   { value: 'pre_contract', label: '契約前', icon: '📋', qrOnly: true },
@@ -260,7 +261,7 @@ export default function MyPage() {
                       <div>
                         <p className="text-xs text-gray-400">{salesperson.company_name}</p>
                         <p className="text-sm font-bold text-gray-800">
-                          {salesperson.name_initials ? `${salesperson.name_initials} さん` : '---'}
+                          {maskedName(salesperson.name_initials)}
                         </p>
                         <div className="flex gap-1.5 mt-0.5">
                           {hasOffer && <span className="text-xs bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full">相談済み</span>}

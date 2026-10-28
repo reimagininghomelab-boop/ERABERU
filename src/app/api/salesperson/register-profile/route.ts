@@ -2,8 +2,12 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { validateKanaPair } from '@/lib/kana'
 
 const OTHER_COMPANY_ID = '__other__'
+
+// DB の CHECK 制約・姓名必須チェック（23514）に該当した場合の文言
+const INPUT_ERROR_MESSAGE = '氏名・フリガナの入力内容を確認してください'
 
 // salesperson_profiles への書き込み専用（サーバー内でのみ使用。キーをレスポンスに含めない）
 function getServiceClient() {
@@ -56,6 +60,8 @@ export async function POST(request: NextRequest) {
   const {
     family_name,
     given_name,
+    family_name_kana,
+    given_name_kana,
     company_id: rawCompanyId,
     application_company_name,
     department,
@@ -71,6 +77,15 @@ export async function POST(request: NextRequest) {
   const givenName = typeof given_name === 'string' ? given_name.trim() : ''
   if (!familyName || !givenName) {
     return NextResponse.json({ error: '姓と名は必須です' }, { status: 400 })
+  }
+
+  // フリガナは必須。DB トリガーと同じ規則で正規化・検証する（保存時の正規化・イニシャル生成は DB が行う）
+  const kana = validateKanaPair(
+    typeof family_name_kana === 'string' ? family_name_kana : '',
+    typeof given_name_kana === 'string' ? given_name_kana : ''
+  )
+  if (kana.error) {
+    return NextResponse.json({ error: kana.error }, { status: 400 })
   }
 
   const applicationCompanyName =
@@ -150,10 +165,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'サーバー設定エラーが発生しました' }, { status: 500 })
   }
 
+  // real_name / name_initials は送らない（DB トリガーが姓名・フリガナから設定する）
   const profileData = {
-    real_name: `${familyName} ${givenName}`,
     family_name: familyName,
     given_name: givenName,
+    family_name_kana: kana.family,
+    given_name_kana: kana.given,
     company_name: companyName,
     company_id: companyId,
     application_company_name: isOtherCompany ? applicationCompanyName : null,
@@ -193,6 +210,9 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
     if (error) {
       console.error('[register-profile] update error', { code: error.code, message: error.message })
+      if (error.code === '23514') {
+        return NextResponse.json({ error: INPUT_ERROR_MESSAGE }, { status: 400 })
+      }
       return NextResponse.json({ error: '更新に失敗しました' }, { status: 500 })
     }
     if (!updated) {
@@ -210,6 +230,9 @@ export async function POST(request: NextRequest) {
       .insert({ user_id: user.id, ...profileData, status })
     if (error) {
       console.error('[register-profile] insert error', { code: error.code, message: error.message })
+      if (error.code === '23514') {
+        return NextResponse.json({ error: INPUT_ERROR_MESSAGE }, { status: 400 })
+      }
       return NextResponse.json({ error: '登録に失敗しました' }, { status: 500 })
     }
     registrationResult = status

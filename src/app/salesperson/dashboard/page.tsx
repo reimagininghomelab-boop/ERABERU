@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
 import { QRCodeSVG } from 'qrcode.react'
 import { MUNICIPALITIES, PREFECTURES } from '@/lib/municipalities'
+import { normalizeKana, validateKanaPair } from '@/lib/kana'
 import Cropper from 'react-easy-crop'
 import type { Area } from 'react-easy-crop'
 
@@ -38,6 +39,7 @@ const SPECIALTIES_OPTIONS = [
   '契約前の不安整理', '他社比較中の判断整理', '打合せ内容の整理', '引渡し後のフォロー',
 ]
 const MAX_SPECIALTIES = 5
+const PROFILE_STALE_MSG = '保存は完了しましたが、最新情報を取得できませんでした。ページを再読み込みしてください'
 const QUALIFICATION_OPTIONS = ['宅地建物取引士', 'ファイナンシャルプランナー', '住宅ローンアドバイザー', '福祉住環境コーディネーター', '建築士']
 
 export default function SalespersonDashboard() {
@@ -58,6 +60,10 @@ export default function SalespersonDashboard() {
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
   const [aiMsg, setAiMsg] = useState('')
+  // フリガナを再確認した時点の「姓|名|セイ|メイ」。その後いずれかを編集すると一致しなくなり未確認に戻る
+  const [kanaConfirmedKey, setKanaConfirmedKey] = useState<string | null>(null)
+  // 保存後の再取得に失敗し、比較基準（profile）が最新か分からない状態。ページ再読み込みで解消する
+  const [profileStale, setProfileStale] = useState(false)
 
   // tag input helpers
   const [qualInput, setQualInput] = useState('')
@@ -99,6 +105,8 @@ export default function SalespersonDashboard() {
       setForm({
         family_name: own.family_name ?? '',
         given_name: own.given_name ?? '',
+        family_name_kana: own.family_name_kana ?? '',
+        given_name_kana: own.given_name_kana ?? '',
         company_name: own.company_name ?? '',
         department: own.department ?? '',
         bio: own.bio ?? '',
@@ -239,12 +247,35 @@ export default function SalespersonDashboard() {
   }
 
   const handleSaveSettings = async () => {
-    setSaving(true)
+    if (profileStale) return
     setSaveMsg('')
+    const familyName = (form.family_name ?? '').trim()
+    const givenName = (form.given_name ?? '').trim()
+    if (!familyName || !givenName) { setSaveMsg('保存に失敗しました：姓と名を入力してください'); return }
+
+    // フリガナ: 未登録のまま触らず、姓名も変えない通常保存では送らない（NULL のまま維持）
+    const kanaEmpty = normalizeKana(form.family_name_kana ?? '') === '' && normalizeKana(form.given_name_kana ?? '') === ''
+    let kanaPayload: { family_name_kana: string; given_name_kana: string } | null = null
+    if (kanaEmpty && kanaRegistered) {
+      setSaveMsg('保存に失敗しました：登録済みのフリガナは削除できません'); return
+    }
+    if (!kanaEmpty || nameChanged) {
+      const kana = validateKanaPair(form.family_name_kana ?? '', form.given_name_kana ?? '')
+      setForm((p: typeof form) => ({ ...p, family_name_kana: kana.family, given_name_kana: kana.given }))
+      if (kana.error) { setSaveMsg(`保存に失敗しました：${kana.error}`); return }
+      kanaPayload = { family_name_kana: kana.family, given_name_kana: kana.given }
+    }
+    if (nameChanged && !kanaConfirmed) {
+      setSaveMsg('保存に失敗しました：氏名を変更した場合は、フリガナを確認してチェックを入れてください'); return
+    }
+
+    setSaving(true)
     const supabase = createClient()
+    // real_name / name_initials は送らない（DB トリガーが姓名・フリガナから設定する）
     const { error } = await supabase.from('salesperson_profiles').update({
-      family_name: form.family_name || null,
-      given_name: form.given_name || null,
+      family_name: familyName,
+      given_name: givenName,
+      ...(kanaPayload ?? {}),
       department: form.department || null,
       bio: form.bio || null,
       area_prefecture: corePrefecture || null,
@@ -256,20 +287,45 @@ export default function SalespersonDashboard() {
       available_prefectures: form.available_prefectures,
       sales_styles: form.sales_styles,
     }).eq('id', profile.id)
-    setSaving(false)
-    setSaveMsg(error ? '保存に失敗しました' : '保存しました')
-    setTimeout(() => setSaveMsg(''), 3000)
-    if (!error) {
-      setAiMsg('AI紹介文を更新中...')
-      fetch('/api/ai/generate-own-intro', { method: 'POST' })
-        .then(async (res) => {
-          const json = await res.json()
-          if (!res.ok) setAiMsg(`AI生成エラー: ${json.error ?? res.status}`)
-          else setAiMsg('AI紹介文を更新しました')
-          setTimeout(() => setAiMsg(''), 5000)
-        })
-        .catch((e) => { setAiMsg(`AI生成エラー: ${e.message}`); setTimeout(() => setAiMsg(''), 5000) })
+    if (error) {
+      setSaving(false)
+      setSaveMsg(
+        error.code === '23514' ? '保存に失敗しました：氏名・フリガナの入力内容を確認してください'
+          : error.code === '42501' ? '保存に失敗しました：変更できない項目が含まれています'
+            : '保存に失敗しました'
+      )
+      return
     }
+
+    // DB で正規化・同期された最新の値を再取得し、姓名変更の比較基準とフォームを更新する
+    const { data: fresh, error: freshError } = await supabase.from('salesperson_profiles').select('*').eq('id', profile.id).maybeSingle()
+    setSaving(false)
+    if (freshError || !fresh) {
+      // 保存は成功している。送信値から保存状態を推測せず、ページ再読み込みまで設定の再保存を止める
+      setProfileStale(true)
+      setSaveMsg(PROFILE_STALE_MSG)
+    } else {
+      setProfile(fresh)
+      setForm((p: typeof form) => ({
+        ...p,
+        family_name: fresh.family_name ?? '',
+        given_name: fresh.given_name ?? '',
+        family_name_kana: fresh.family_name_kana ?? '',
+        given_name_kana: fresh.given_name_kana ?? '',
+      }))
+      setKanaConfirmedKey(null)
+      setSaveMsg('保存しました')
+      setTimeout(() => setSaveMsg((m) => (m === '保存しました' ? '' : m)), 3000)
+    }
+    setAiMsg('AI紹介文を更新中...')
+    fetch('/api/ai/generate-own-intro', { method: 'POST' })
+      .then(async (res) => {
+        const json = await res.json()
+        if (!res.ok) setAiMsg(`AI生成エラー: ${json.error ?? res.status}`)
+        else setAiMsg('AI紹介文を更新しました')
+        setTimeout(() => setAiMsg(''), 5000)
+      })
+      .catch((e) => { setAiMsg(`AI生成エラー: ${e.message}`); setTimeout(() => setAiMsg(''), 5000) })
   }
 
   const toggleTag = (field: 'specialty_styles' | 'qualifications' | 'available_prefectures', value: string) => {
@@ -296,6 +352,14 @@ export default function SalespersonDashboard() {
     <div className="min-h-screen bg-stone-100 flex items-center justify-center text-gray-400">読み込み中...</div>
   )
   if (!profile) return null
+
+  // 姓名変更の判定は、最後に保存（再取得）した値を基準にする
+  const nameChanged =
+    (form.family_name ?? '').trim() !== (profile.family_name ?? '') ||
+    (form.given_name ?? '').trim() !== (profile.given_name ?? '')
+  const kanaRegistered = profile.family_name_kana != null || profile.given_name_kana != null
+  const kanaKey = `${(form.family_name ?? '').trim()}|${(form.given_name ?? '').trim()}|${normalizeKana(form.family_name_kana ?? '')}|${normalizeKana(form.given_name_kana ?? '')}`
+  const kanaConfirmed = kanaConfirmedKey === kanaKey
 
   const displayName = profile.family_name && profile.given_name
     ? `${profile.family_name} ${profile.given_name}`
@@ -532,6 +596,48 @@ export default function SalespersonDashboard() {
               </div>
             </div>
 
+            {/* フリガナ */}
+            <div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">セイ（フリガナ）</label>
+                  <input
+                    value={form.family_name_kana ?? ''}
+                    onChange={(e) => setForm((p: typeof form) => ({ ...p, family_name_kana: e.target.value }))}
+                    onBlur={() => setForm((p: typeof form) => ({ ...p, family_name_kana: normalizeKana(p.family_name_kana ?? '') }))}
+                    className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    placeholder="ヤマダ"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">メイ（フリガナ）</label>
+                  <input
+                    value={form.given_name_kana ?? ''}
+                    onChange={(e) => setForm((p: typeof form) => ({ ...p, given_name_kana: e.target.value }))}
+                    onBlur={() => setForm((p: typeof form) => ({ ...p, given_name_kana: normalizeKana(p.given_name_kana ?? '') }))}
+                    className="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    placeholder="タロウ"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400 mt-1.5">
+                {kanaRegistered
+                  ? '全角カタカナで保存されます。修正はできますが、削除はできません。'
+                  : 'フリガナ未登録です。氏名を変更する場合は入力が必要です（ひらがな入力も可）。'}
+              </p>
+              {nameChanged && (
+                <label className="flex items-start gap-2 mt-2 text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={kanaConfirmed}
+                    onChange={(e) => setKanaConfirmedKey(e.target.checked ? kanaKey : null)}
+                    className="mt-0.5"
+                  />
+                  新しい氏名に合わせてフリガナを確認しました（読みが同じ場合もチェックしてください）
+                </label>
+              )}
+            </div>
+
             {/* 会社・部署 */}
             <div>
               <label className="text-xs text-gray-500 mb-1 block">会社名</label>
@@ -752,13 +858,13 @@ export default function SalespersonDashboard() {
             {/* 保存 */}
             <div className="pt-2">
               {saveMsg && (
-                <p className={`text-sm mb-3 ${saveMsg.includes('失敗') ? 'text-red-500' : 'text-green-600'}`}>
+                <p className={`text-sm mb-3 ${saveMsg.includes('失敗') || profileStale ? 'text-red-500' : 'text-green-600'}`}>
                   {saveMsg}
                 </p>
               )}
               <button
                 onClick={handleSaveSettings}
-                disabled={saving}
+                disabled={saving || profileStale}
                 className="w-full bg-orange-500 hover:bg-orange-400 disabled:bg-orange-300 text-white font-bold py-3 rounded-xl transition text-sm"
               >
                 {saving ? '保存中...' : '変更を保存する'}

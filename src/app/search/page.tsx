@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import Header from '@/components/Header'
+import { maskedName } from '@/lib/kana'
 
 // ─── 型 ───────────────────────────────────────────────────────────
 const SALES_STYLE_AXES = [
@@ -231,7 +232,7 @@ function DetailPanel({ agent, unlockedData, reviews, reviewsLoading, onViewConta
 
   const displayName = unlockedData
     ? (unlockedData.family_name && unlockedData.given_name ? `${unlockedData.family_name} ${unlockedData.given_name}` : unlockedData.real_name ?? '---')
-    : (agent.name_initials ? `${agent.name_initials} さん` : '---')
+    : maskedName(agent.name_initials)
 
   const consultationThemes: string[] = (agent.specialties ?? []).length > 0 ? agent.specialties : (ai?.strengths ?? [])
   const matchCopy = ai?.goodMatch?.[0] ? formatMatchCopy(ai.goodMatch[0]) : null
@@ -674,8 +675,8 @@ function SearchContent() {
     : null
   const stickyDisplayName = selectedAgent
     ? (unlockedMap[selectedAgent.id]
-        ? (unlockedMap[selectedAgent.id].real_name ?? (selectedAgent.name_initials ? `${selectedAgent.name_initials} さん` : '---'))
-        : (selectedAgent.name_initials ? `${selectedAgent.name_initials} さん` : '---'))
+        ? (unlockedMap[selectedAgent.id].real_name ?? maskedName(selectedAgent.name_initials))
+        : maskedName(selectedAgent.name_initials))
     : ''
   const hasFilter = !!(keyword || filterPrefecture || filterSpecialty || filterQualification)
 
@@ -811,8 +812,8 @@ function SearchContent() {
               const unlocked = !!unlockedMap[agent.id]
               const ai = (agent.ai_summary ?? null) as AISummary | null
               const displayName = unlocked
-                ? (unlockedMap[agent.id]?.real_name ?? (agent.name_initials ? `${agent.name_initials} さん` : '---'))
-                : (agent.name_initials ? `${agent.name_initials} さん` : '---')
+                ? (unlockedMap[agent.id]?.real_name ?? maskedName(agent.name_initials))
+                : maskedName(agent.name_initials)
               const themes: string[] = (agent.specialties ?? []).slice(0, 2)
               const matchCopy = ai?.goodMatch?.[0] ? formatMatchCopy(ai.goodMatch[0]) : null
               const aiReason = getAiMatchReason(agent.id)
@@ -937,7 +938,7 @@ function SearchContent() {
                       {isStyleMatch && <span className="text-xs bg-teal-100 text-teal-600 px-1.5 py-0.5 rounded-full font-medium shrink-0">相性◎</span>}
                     </div>
                     <p className="text-base font-bold text-gray-800">
-                      {unlocked ? (unlockedMap[agent.id]?.real_name ?? '---') : (agent.name_initials ? `${agent.name_initials} さん` : '---')}
+                      {unlocked ? (unlockedMap[agent.id]?.real_name ?? '---') : maskedName(agent.name_initials)}
                     </p>
                     {agent.area_prefecture && <p className="text-xs text-gray-500">📍 {agent.area_prefecture}</p>}
                     {!unlocked && <p className="text-xs text-stone-400 mt-0.5">🔒 氏名・写真は開示後に表示</p>}
@@ -993,8 +994,8 @@ function SearchContent() {
               {contactedAgents.map((agent) => {
                 const unlocked = !!unlockedMap[agent.id]
                 const displayName = unlocked
-                  ? (unlockedMap[agent.id]?.real_name ?? (agent.name_initials ? `${agent.name_initials} さん` : '---'))
-                  : (agent.name_initials ? `${agent.name_initials} さん` : '---')
+                  ? (unlockedMap[agent.id]?.real_name ?? maskedName(agent.name_initials))
+                  : maskedName(agent.name_initials)
                 return (
                   <div key={agent.id} className="bg-white rounded-xl border border-stone-200 px-4 py-3 flex items-center justify-between gap-3 opacity-70">
                     <div className="flex items-center gap-3 min-w-0">
